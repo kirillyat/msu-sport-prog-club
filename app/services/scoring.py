@@ -36,8 +36,16 @@ def status_multiplier(status: SolveStatus) -> float:
         return 1.0
     if status == SolveStatus.solved_late:
         return LATE_MULTIPLIER
+    # solved_too_late, solved_before, not_solved — ноль.
     return 0.0
 
 
-def points_for(problem: Problem, status: SolveStatus, weight: float = 1.0) -> float:
-    return round(problem_points(problem) * status_multiplier(status) * weight, 2)
+def points_for(
+    problem: Problem,
+    status: SolveStatus,
+    weight: float = 1.0,
+    flat_points: float | None = None,
+) -> float:
+    """flat_points задаёт одинаковую цену любой задачи — так считаются марафоны."""
+    base = flat_points if flat_points is not None else problem_points(problem)
+    return round(base * status_multiplier(status) * weight, 2)

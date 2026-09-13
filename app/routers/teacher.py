@@ -15,7 +15,6 @@ from app.models import (
     Announcement,
     Assignment,
     BonusPoint,
-    Event,
     Group,
     GroupMembership,
     Platform,
@@ -407,23 +406,53 @@ async def create_assignment(
     user: TeacherUser,
     title: str = Form(...),
     problem_set_id: int = Form(...),
-    group_id: int = Form(...),
+    group_id: str = Form(""),
+    description: str = Form(""),
+    starts_at: str = Form(""),
     deadline: str = Form(""),
+    hard_deadline: bool = Form(False),
+    flat_points: str = Form(""),
+    full_clear_bonus: str = Form(""),
     count_prior_solves: bool = Form(False),
 ):
+    """Все правила задаются здесь: потом меняются только название и описание."""
     title = title.strip()
     if not title:
         return _redirect("/teacher/assignments", error="Пустое+название")
     if await session.get(ProblemSet, problem_set_id) is None:
         return _redirect("/teacher/assignments", error="Список+задач+не+найден")
-    if await session.get(Group, group_id) is None:
+
+    target_group = int(group_id) if group_id.strip() else None
+    if target_group is not None and await session.get(Group, target_group) is None:
         return _redirect("/teacher/assignments", error="Группа+не+найдена")
+
+    start = parse_local_input(starts_at) or utcnow()
+    end = parse_local_input(deadline)
+    if end is not None and end <= start:
+        return _redirect("/teacher/assignments", error="Дедлайн+раньше+начала")
+
+    def number(raw: str) -> float | None:
+        raw = raw.strip().replace(",", ".")
+        return float(raw) if raw else None
+
+    try:
+        points = number(flat_points)
+        bonus = number(full_clear_bonus)
+    except ValueError:
+        return _redirect("/teacher/assignments", error="Баллы+должны+быть+числом")
+    if hard_deadline and end is None:
+        return _redirect("/teacher/assignments", error="Жёсткий+дедлайн+без+даты+не+работает")
 
     assignment = Assignment(
         title=title,
+        description=description.strip() or None,
         problem_set_id=problem_set_id,
-        group_id=group_id,
-        deadline=parse_local_input(deadline),
+        group_id=target_group,
+        assigned_at=start,
+        deadline=end,
+        hard_deadline=hard_deadline,
+        points_per_problem=points,
+        full_clear_bonus=bonus,
         created_by_id=user.id,
         count_prior_solves=count_prior_solves,
     )
@@ -458,6 +487,31 @@ async def assignment_matrix(
     )
 
 
+@router.post("/assignments/{assignment_id}/edit")
+async def edit_assignment(
+    session: SessionDep,
+    user: TeacherUser,
+    assignment_id: int,
+    title: str = Form(...),
+    description: str = Form(""),
+):
+    """Правится только то, что не меняет подсчёт: название и описание.
+
+    Сроки, список задач, адресат и баллы задаются при создании — иначе
+    рейтинг задним числом менялся бы у всех участников.
+    """
+    assignment = await session.get(Assignment, assignment_id)
+    if assignment is None:
+        return _redirect("/teacher/assignments", error="Задание+не+найдено")
+    title = title.strip()
+    if not title:
+        return _redirect(f"/teacher/assignments/{assignment_id}", error="Пустое+название")
+    assignment.title = title
+    assignment.description = description.strip() or None
+    await session.commit()
+    return _redirect(f"/teacher/assignments/{assignment_id}", message="Сохранено")
+
+
 @router.post("/assignments/{assignment_id}/delete")
 async def delete_assignment(session: SessionDep, user: TeacherUser, assignment_id: int):
     assignment = await session.get(Assignment, assignment_id)
@@ -465,69 +519,6 @@ async def delete_assignment(session: SessionDep, user: TeacherUser, assignment_i
         await session.delete(assignment)
         await session.commit()
     return _redirect("/teacher/assignments", message="Задание+удалено")
-
-
-# ---------------------------------------------------------------- ивенты
-
-
-@router.get("/events")
-async def events_page(request: Request, session: SessionDep, user: TeacherUser):
-    events = await _all(session, select(Event).order_by(Event.starts_at.desc()))
-    groups = await _all(
-        session, select(Group).where(Group.is_archived.is_(False)).order_by(Group.title)
-    )
-    sets = await _all(session, select(ProblemSet).order_by(ProblemSet.title))
-    return templates.TemplateResponse(
-        request,
-        "teacher/events.html",
-        {"user": user, "events": events, "groups": groups, "sets": sets, **_flash(request)},
-    )
-
-
-@router.post("/events")
-async def create_event(
-    session: SessionDep,
-    user: TeacherUser,
-    title: str = Form(...),
-    problem_set_id: int = Form(...),
-    starts_at: str = Form(...),
-    ends_at: str = Form(...),
-    group_id: str = Form(""),
-    description: str = Form(""),
-    points_per_problem: float = Form(10.0),
-    full_clear_bonus: float = Form(20.0),
-):
-    start = parse_local_input(starts_at)
-    end = parse_local_input(ends_at)
-    if start is None or end is None:
-        return _redirect("/teacher/events", error="Укажи+начало+и+конец")
-    if end <= start:
-        return _redirect("/teacher/events", error="Конец+раньше+начала")
-    if await session.get(ProblemSet, problem_set_id) is None:
-        return _redirect("/teacher/events", error="Список+задач+не+найден")
-
-    event = Event(
-        title=title.strip(),
-        description=description.strip() or None,
-        problem_set_id=problem_set_id,
-        group_id=int(group_id) if group_id.strip() else None,
-        starts_at=start,
-        ends_at=end,
-        points_per_problem=points_per_problem,
-        full_clear_bonus=full_clear_bonus,
-    )
-    session.add(event)
-    await session.commit()
-    return _redirect("/teacher/events", message="Ивент+создан")
-
-
-@router.post("/events/{event_id}/delete")
-async def delete_event(session: SessionDep, user: TeacherUser, event_id: int):
-    event = await session.get(Event, event_id)
-    if event is not None:
-        await session.delete(event)
-        await session.commit()
-    return _redirect("/teacher/events", message="Ивент+удалён")
 
 
 # ---------------------------------------------------------------- объявления

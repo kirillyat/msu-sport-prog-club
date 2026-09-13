@@ -7,7 +7,6 @@ import pytest
 from app.models import (
     Assignment,
     BonusPoint,
-    Event,
     Group,
     GroupMembership,
     Platform,
@@ -135,11 +134,13 @@ async def test_prior_solve_earns_nothing(session, world):
     assert all(r.total == 0 for r in rows)
 
 
-async def test_event_points_only_inside_window(session, world):
-    session.add(Event(title="Марафон", problem_set_id=world["set"].id,
-                      group_id=world["group"].id,
-                      starts_at=BASE, ends_at=BASE + timedelta(hours=8),
-                      points_per_problem=10.0, full_clear_bonus=20.0))
+async def test_marathon_counts_only_inside_window(session, world):
+    """Марафон — это задание с жёстким дедлайном и одинаковой ценой задач."""
+    session.add(Assignment(
+        title="Марафон", problem_set_id=world["set"].id, group_id=world["group"].id,
+        assigned_at=BASE, deadline=BASE + timedelta(hours=8), hard_deadline=True,
+        points_per_problem=10.0, full_clear_bonus=20.0,
+    ))
     await session.commit()
 
     anya, borya = world["anya"], world["borya"]
@@ -151,8 +152,22 @@ async def test_event_points_only_inside_window(session, world):
 
     rows = await build_leaderboard(session)
     by_name = {r.user.display_name: r for r in rows}
-    assert by_name["Аня"].event_points == 40.0  # 2×10 + 20 за комплект
-    assert by_name["Боря"].event_points == 0.0
+    # 2×10 за задачи + 2×2 за first blood + 20 за полный комплект.
+    assert by_name["Аня"].assignment_points == 44.0
+    assert by_name["Боря"].assignment_points == 0.0
+
+
+async def test_club_wide_assignment_counts_for_everyone(session, world):
+    """Задание без группы — для всего клуба."""
+    session.add(Assignment(title="Всем", problem_set_id=world["set"].id, assigned_at=BASE))
+    await session.commit()
+    await _accept(session, world, world["borya"], world["problems"][0],
+                  BASE + timedelta(hours=1), "b1")
+
+    rows = await build_leaderboard(session)
+    by_name = {r.user.display_name: r for r in rows}
+    assert by_name["Боря"].solved == 1
+    assert by_name["Боря"].assignment_points > 0
 
 
 async def test_manual_bonus_counts(session, world):

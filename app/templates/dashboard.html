@@ -26,26 +26,6 @@
 </div>
 {% endif %}
 
-{% if events %}
-<h2>{{ icon("calendar") }} Ивенты</h2>
-<div class="grid two">
-  {% for event in events %}
-  <a class="card" href="/events/{{ event.id }}">
-    <div class="row between">
-      <h3>{{ event.title }}</h3>
-      {% if event.starts_at <= now() and event.ends_at >= now() %}
-        <span class="badge ok">{{ icon("flame") }} идёт сейчас</span>
-      {% else %}
-        <span class="badge">{{ icon("clock") }} {{ event.starts_at | ago }}</span>
-      {% endif %}
-    </div>
-    <p class="small muted" style="margin:0">{{ event.starts_at | dt }} — {{ event.ends_at | dt }}</p>
-    {% if event.description %}<p class="small" style="margin:8px 0 0">{{ event.description }}</p>{% endif %}
-  </a>
-  {% endfor %}
-</div>
-{% endif %}
-
 <h2>{{ icon("tasks") }} Задания</h2>
 {% if cards %}
 <div class="grid two">

@@ -94,8 +94,9 @@ class Platform(enum.StrEnum):
 class SolveStatus(enum.StrEnum):
     not_solved = "not_solved"
     solved_in_time = "solved_in_time"
-    solved_late = "solved_late"
-    solved_before = "solved_before"  # решена до выдачи задания — не засчитываем
+    solved_late = "solved_late"          # после мягкого дедлайна: половина баллов
+    solved_too_late = "solved_too_late"  # после жёсткого дедлайна: не засчитываем
+    solved_before = "solved_before"      # решена до выдачи задания — не засчитываем
 
 
 class User(Base):
@@ -262,41 +263,31 @@ class ProblemSetItem(Base):
 class Assignment(Base):
     __tablename__ = "assignments"
     __table_args__ = (
+        # Либо группа, либо один студент, либо (оба NULL) весь клуб.
         CheckConstraint(
-            "(group_id IS NOT NULL AND user_id IS NULL)"
-            " OR (group_id IS NULL AND user_id IS NOT NULL)",
+            "group_id IS NULL OR user_id IS NULL",
             name="ck_assignment_single_target",
         ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text)
     problem_set_id: Mapped[int] = mapped_column(ForeignKey("problem_sets.id", ondelete="CASCADE"))
+    # Обе ссылки пусты — задание для всего клуба.
     group_id: Mapped[int | None] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"))
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     assigned_at: Mapped[datetime] = mapped_column(default=utcnow)
     deadline: Mapped[datetime | None] = mapped_column()
+    # Жёсткий дедлайн: после срока не половина баллов, а ноль. Так делаются марафоны.
+    hard_deadline: Mapped[bool] = mapped_column(Boolean, default=False)
+    # NULL — баллы по сложности задачи; число — одинаковая цена за любую задачу.
+    points_per_problem: Mapped[float | None] = mapped_column(Float)
+    # NULL — стандартный бонус за полный комплект из scoring.py.
+    full_clear_bonus: Mapped[float | None] = mapped_column(Float)
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     # Засчитывать решения, сделанные ДО выдачи задания. По умолчанию нет.
     count_prior_solves: Mapped[bool] = mapped_column(Boolean, default=False)
-
-    problem_set: Mapped[ProblemSet] = relationship(lazy="selectin")
-    group: Mapped[Group | None] = relationship(lazy="selectin")
-
-
-class Event(Base):
-    __tablename__ = "events"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    title: Mapped[str] = mapped_column(String(200))
-    description: Mapped[str | None] = mapped_column(Text)
-    problem_set_id: Mapped[int] = mapped_column(ForeignKey("problem_sets.id", ondelete="CASCADE"))
-    group_id: Mapped[int | None] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"))
-    starts_at: Mapped[datetime] = mapped_column()
-    ends_at: Mapped[datetime] = mapped_column()
-    points_per_problem: Mapped[float] = mapped_column(Float, default=10.0)
-    full_clear_bonus: Mapped[float] = mapped_column(Float, default=20.0)
-    created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
     problem_set: Mapped[ProblemSet] = relationship(lazy="selectin")
     group: Mapped[Group | None] = relationship(lazy="selectin")

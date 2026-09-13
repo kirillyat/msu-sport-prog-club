@@ -8,7 +8,7 @@
     <h1>Лидерборд</h1>
     <p class="sub" style="margin-bottom:8px">
       {% if my_place and rows | length > 1 %}Твоё место — <strong>{{ my_place }}</strong> из {{ rows | length }}.{% endif %}
-      За задачи из заданий и ивентов.
+      За решённые задачи и ручные бонусы.
     </p>
     <details class="formula">
       <summary>Как считаются баллы</summary>
@@ -17,7 +17,7 @@
         <li>Codeforces: рейтинг ÷ 200 (задача 1600 → 8 баллов).</li>
         <li>Решено после дедлайна — половина баллов.</li>
         <li>Первым в группе — плюс 2.</li>
-        <li>Задание целиком — плюс 5.</li>
+        <li>Задание целиком — плюс 5 (у марафонов бонус свой).</li>
         <li>Решённое до выдачи задания не считается.</li>
       </ul>
     </details>
@@ -51,8 +51,7 @@
     <thead>
       <tr>
         <th>#</th><th>Студент</th><th>Всего</th><th>Решено</th>
-        <th class="col-extra">Задания</th><th class="col-extra">Ивенты</th>
-        <th class="col-extra">Бонусы</th><th class="col-extra">С опозданием</th>
+        <th class="col-extra">Задания</th><th class="col-extra">Бонусы</th><th class="col-extra">С опозданием</th>
         <th class="col-extra">Первым</th>
       </tr>
     </thead>
@@ -71,7 +70,6 @@
         <td class="points">{{ row.total | pts }}</td>
         <td class="num">{{ row.solved }}</td>
         <td class="num muted col-extra">{{ row.assignment_points | pts }}</td>
-        <td class="num muted col-extra">{{ row.event_points | pts }}</td>
         <td class="num muted col-extra">{{ row.bonus_points | pts }}</td>
         <td class="num muted col-extra">{{ row.late }}</td>
         <td class="num muted col-extra">{{ row.first_bloods }}</td>

@@ -6,7 +6,9 @@
 <h1>{{ assignment.title }}</h1>
 <p class="sub">
   Выдано {{ assignment.assigned_at | dt }}
-  {% if assignment.deadline %} · дедлайн {{ assignment.deadline | dt }}{% endif %}
+  {% if assignment.deadline %}
+    · дедлайн {{ assignment.deadline | dt }}{% if assignment.hard_deadline %} (жёсткий){% endif %}
+  {% endif %}
   {% if assignment.group %} · {{ assignment.group.title }}{% endif %}
 </p>
 
@@ -41,6 +43,7 @@
         <td>
           {% if cell.status == SolveStatus.solved_in_time %}<span class="badge ok">{{ icon("check") }} решено</span>
           {% elif cell.status == SolveStatus.solved_late %}<span class="badge warn">{{ icon("clock") }} после дедлайна</span>
+          {% elif cell.status == SolveStatus.solved_too_late %}<span class="badge">после дедлайна, не засчитано</span>
           {% elif cell.status == SolveStatus.solved_before %}<span class="badge">решено до выдачи</span>
           {% else %}<span class="muted">—</span>{% endif %}
         </td>
@@ -59,7 +62,8 @@
 {% endif %}
 
 <p class="small muted">
-  {% if assignment.count_prior_solves %}В этом задании засчитываются и задачи,
-  решённые до выдачи.{% else %}Решённое до выдачи задания не засчитывается.{% endif %}
+  {% if assignment.count_prior_solves %}Засчитываются и задачи, решённые до выдачи.
+  {% elif assignment.hard_deadline %}После дедлайна решения не засчитываются.
+  {% else %}Решённое до выдачи не засчитывается, после дедлайна — половина баллов.{% endif %}
 </p>
 {% endblock %}

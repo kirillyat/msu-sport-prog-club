@@ -4,10 +4,37 @@
 {% block content %}
 <h1>{{ assignment.title }}</h1>
 <p class="sub">
-  {{ assignment.group.title if assignment.group else "персональное" }} ·
+  {{ assignment.group.title if assignment.group else ("персональное" if assignment.user_id else "весь клуб") }} ·
   выдано {{ assignment.assigned_at | dt }}
-  {% if assignment.deadline %} · дедлайн {{ assignment.deadline | dt }}{% endif %}
+  {% if assignment.deadline %}
+    · дедлайн {{ assignment.deadline | dt }}{% if assignment.hard_deadline %} (жёсткий){% endif %}
+  {% endif %}
+  {% if assignment.points_per_problem is not none %}
+    · {{ assignment.points_per_problem | pts }} за задачу
+  {% endif %}
 </p>
+{% if assignment.description %}<p class="sub">{{ assignment.description }}</p>{% endif %}
+
+<details class="formula" style="margin-bottom:18px">
+  <summary>Изменить название и описание</summary>
+  <form method="post" action="/teacher/assignments/{{ assignment.id }}/edit" style="margin-top:10px">
+    <div class="grid two">
+      <div class="field">
+        <label for="title">Название</label>
+        <input type="text" id="title" name="title" value="{{ assignment.title }}" required>
+      </div>
+      <div class="field">
+        <label for="description">Описание</label>
+        <input type="text" id="description" name="description" value="{{ assignment.description or '' }}">
+      </div>
+    </div>
+    <p class="small muted">
+      Сроки, задачи, адресат и баллы не меняются после выдачи: пересчёт задним
+      числом сдвинул бы рейтинг у всех участников.
+    </p>
+    <button type="submit">{{ icon("check") }} Сохранить</button>
+  </form>
+</details>
 
 {% if progress.participants %}
 <div class="card table-wrap" style="padding:6px">
@@ -58,6 +85,9 @@
   <span class="item"><span class="cell solved_in_time">{{ icon("check") }}</span> в срок</span>
   <span class="item"><span class="cell solved_late">{{ icon("check") }}</span> после дедлайна</span>
   <span class="item"><span class="cell solved_before">•</span> решено до выдачи, не засчитано</span>
+  {% if assignment.hard_deadline %}
+  <span class="item"><span class="cell solved_too_late">•</span> после жёсткого дедлайна, не засчитано</span>
+  {% endif %}
 </div>
 {% else %}
 <div class="card">{{ empty("users", "В группе нет студентов — раздай код группы.",

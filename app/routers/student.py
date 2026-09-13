@@ -7,16 +7,11 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
 
 from app.deps import CurrentUser, SessionDep
-from app.models import Assignment, Event, Group, GroupMembership, Platform, User, utcnow
+from app.models import Assignment, Group, GroupMembership, Platform, User, utcnow
 from app.routers.announcements import upcoming_for_dashboard
 from app.services.feed import build_feed
 from app.services.leaderboard import build_leaderboard
-from app.services.progress import (
-    assignments_for_user,
-    compute_progress,
-    groups_for_user,
-    problems_for_set,
-)
+from app.services.progress import assignments_for_user, compute_progress, groups_for_user
 from app.services.stats import user_stats
 from app.services.sync import sync_account
 from app.templating import plural_ru, templates
@@ -44,15 +39,6 @@ async def dashboard(request: Request, session: SessionDep, user: CurrentUser):
             }
         )
 
-    group_ids = [g.id for g in groups]
-    events_stmt = select(Event).where(Event.ends_at >= utcnow())
-    if group_ids:
-        events_stmt = events_stmt.where(
-            (Event.group_id.is_(None)) | (Event.group_id.in_(group_ids))
-        )
-    else:
-        events_stmt = events_stmt.where(Event.group_id.is_(None))
-    events = list((await session.execute(events_stmt.order_by(Event.starts_at))).scalars().all())
 
     missing_accounts = [
         p
@@ -69,7 +55,6 @@ async def dashboard(request: Request, session: SessionDep, user: CurrentUser):
             "feed_items": await build_feed(session, user, limit=12),
             "announcements": await upcoming_for_dashboard(session, user),
             "groups": groups,
-            "events": events,
             "missing_accounts": missing_accounts,
             "ok": request.query_params.get("ok"),
             "error": request.query_params.get("err"),
@@ -108,19 +93,6 @@ async def assignment_detail(
             "progress": progress,
             "problems": progress.problems,
         },
-    )
-
-
-@router.get("/events/{event_id}")
-async def event_detail(request: Request, session: SessionDep, user: CurrentUser, event_id: int):
-    event = await session.get(Event, event_id)
-    if event is None:
-        return RedirectResponse("/?err=Ивент+не+найден", status_code=303)
-    problems = await problems_for_set(session, event.problem_set_id)
-    return templates.TemplateResponse(
-        request,
-        "event.html",
-        {"user": user, "event": event, "problems": problems},
     )
 
 

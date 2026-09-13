@@ -82,7 +82,8 @@ def reminder_text(item: Announcement) -> str:
 def assignment_text(item: Assignment, problems: int) -> str:
     lines = [f"📝 Новое задание: <b>{_e(item.title)}</b>", f"Задач: {problems}"]
     if item.deadline:
-        lines.append(f"Дедлайн: {fmt_dt(item.deadline)}")
+        suffix = " (после срока не засчитывается)" if item.hard_deadline else ""
+        lines.append(f"Дедлайн: {fmt_dt(item.deadline)}{suffix}")
     base = settings.base_url.rstrip("/")
     lines.append(f'<a href="{_e(base)}/assignments/{item.id}">Открыть на портале</a>')
     return "\n".join(lines)

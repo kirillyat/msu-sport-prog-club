@@ -3,14 +3,13 @@
 {% block title %}Задания — {{ settings.app_name }}{% endblock %}
 {% block content %}
 <h1>Задания</h1>
-<p class="sub">Список задач для группы. Считаются решения после выдачи.</p>
+<p class="sub">Список задач с дедлайном — для группы, одного студента или всего клуба.</p>
 
 <div class="card">
   <h3>{{ icon("plus") }} Новое задание</h3>
-  {% if not sets or not groups %}
+  {% if not sets %}
     <p class="small muted" style="margin:0">
-      Нужны хотя бы одна <a href="/teacher/groups">группа</a> и один
-      <a href="/teacher/sets">список задач</a>.
+      Сначала собери <a href="/teacher/sets">список задач</a>.
     </p>
   {% else %}
   <form method="post" action="/teacher/assignments">
@@ -20,21 +19,44 @@
         <input type="text" id="title" name="title" placeholder="Неделя 3 — бинпоиск" required>
       </div>
       <div class="field">
-        <label for="deadline">Дедлайн (необязательно)</label>
-        <input type="datetime-local" id="deadline" name="deadline">
-      </div>
-      <div class="field">
         <label for="problem_set_id">Список задач</label>
         <select id="problem_set_id" name="problem_set_id" required>
           {% for item in sets %}<option value="{{ item.id }}">{{ item.title }} ({{ item.items | length }})</option>{% endfor %}
         </select>
       </div>
       <div class="field">
-        <label for="group_id">Группа</label>
-        <select id="group_id" name="group_id" required>
+        <label for="group_id">Кому</label>
+        <select id="group_id" name="group_id">
+          <option value="">Всему клубу</option>
           {% for group in groups %}<option value="{{ group.id }}">{{ group.title }}</option>{% endfor %}
         </select>
       </div>
+      <div class="field">
+        <label for="description">Описание (необязательно)</label>
+        <input type="text" id="description" name="description" placeholder="Сбор в дискорде за 15 минут">
+      </div>
+      <div class="field">
+        <label for="starts_at">Начало (пусто — сейчас)</label>
+        <input type="datetime-local" id="starts_at" name="starts_at">
+      </div>
+      <div class="field">
+        <label for="deadline">Дедлайн (необязательно)</label>
+        <input type="datetime-local" id="deadline" name="deadline">
+      </div>
+      <div class="field">
+        <label for="flat_points">Баллов за задачу (пусто — по сложности)</label>
+        <input type="number" step="0.5" id="flat_points" name="flat_points" placeholder="по сложности">
+      </div>
+      <div class="field">
+        <label for="full_clear_bonus">Бонус за полный комплект (пусто — 5)</label>
+        <input type="number" step="0.5" id="full_clear_bonus" name="full_clear_bonus" placeholder="5">
+      </div>
+    </div>
+    <div class="field">
+      <label class="check">
+        <input type="checkbox" name="hard_deadline" value="true">
+        жёсткий дедлайн — после срока не засчитывать вовсе (для марафонов)
+      </label>
     </div>
     <div class="field">
       <label class="check">
@@ -42,6 +64,11 @@
         засчитывать решённое до выдачи
       </label>
     </div>
+    <p class="small muted">
+      {{ icon("alert") }} Сроки, задачи, адресат и баллы задаются здесь и после
+      выдачи не меняются — иначе рейтинг поехал бы задним числом. Потом правятся
+      только название и описание.
+    </p>
     <button type="submit">{{ icon("send") }} Выдать</button>
   </form>
   {% endif %}
@@ -55,7 +82,7 @@
     {% for assignment in assignments %}
       <tr>
         <td><a href="/teacher/assignments/{{ assignment.id }}">{{ assignment.title }}</a></td>
-        <td class="small muted">{{ assignment.group.title if assignment.group else "персонально" }}</td>
+        <td class="small muted">{{ assignment.group.title if assignment.group else ("персонально" if assignment.user_id else "весь клуб") }}</td>
         <td class="small muted">{{ assignment.assigned_at | ago }}</td>
         <td class="small muted">
           {% if assignment.deadline %}

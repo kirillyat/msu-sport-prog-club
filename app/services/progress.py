@@ -36,6 +36,7 @@ class Cell:
         return {
             SolveStatus.solved_in_time: "✓",
             SolveStatus.solved_late: "✓",
+            SolveStatus.solved_too_late: "•",
             SolveStatus.solved_before: "•",
             SolveStatus.not_solved: "",
         }[self.status]
@@ -72,13 +73,13 @@ async def participants_for_assignment(session: AsyncSession, assignment: Assignm
     if assignment.user_id is not None:
         user = await session.get(User, assignment.user_id)
         return [user] if user else []
-    stmt: Select = (
-        select(User)
-        .join(GroupMembership, GroupMembership.user_id == User.id)
-        .where(GroupMembership.group_id == assignment.group_id, User.is_active.is_(True))
-        .order_by(User.display_name)
-    )
-    return list((await session.execute(stmt)).scalars().all())
+    stmt: Select = select(User).where(User.is_active.is_(True))
+    if assignment.group_id is not None:
+        stmt = stmt.join(GroupMembership, GroupMembership.user_id == User.id).where(
+            GroupMembership.group_id == assignment.group_id
+        )
+    # Иначе задание для всего клуба — участвуют все.
+    return list((await session.execute(stmt.order_by(User.display_name))).scalars().all())
 
 
 async def problems_for_set(session: AsyncSession, problem_set_id: int) -> list[Problem]:
@@ -118,10 +119,14 @@ def _status(
     first_after: datetime | None,
     deadline: datetime | None,
     count_prior: bool,
+    hard_deadline: bool = False,
 ) -> tuple[SolveStatus, datetime | None]:
     if first_after is not None:
         if deadline is None or first_after <= deadline:
             return SolveStatus.solved_in_time, first_after
+        # Жёсткий дедлайн: после срока не половина баллов, а ноль.
+        if hard_deadline:
+            return SolveStatus.solved_too_late, first_after
         return SolveStatus.solved_late, first_after
     if first_ever is not None:
         # Задача была решена ещё до выдачи задания. По умолчанию не засчитываем,
@@ -155,7 +160,11 @@ async def compute_progress(
     )
     for (user_id, problem_id), (first_ever, first_after) in times.items():
         status, solved_at = _status(
-            first_ever, first_after, assignment.deadline, assignment.count_prior_solves
+            first_ever,
+            first_after,
+            assignment.deadline,
+            assignment.count_prior_solves,
+            assignment.hard_deadline,
         )
         progress.cells[(user_id, problem_id)] = Cell(
             status=status, solved_at=solved_at, first_ever_at=first_ever
@@ -168,7 +177,10 @@ async def assignments_for_user(session: AsyncSession, user: User) -> list[Assign
     stmt = (
         select(Assignment)
         .where(
-            (Assignment.user_id == user.id) | (Assignment.group_id.in_(group_ids)),
+            (Assignment.user_id == user.id)
+            | (Assignment.group_id.in_(group_ids))
+            # Задание всему клубу: обе ссылки пусты.
+            | ((Assignment.group_id.is_(None)) & (Assignment.user_id.is_(None))),
         )
         .order_by(Assignment.assigned_at.desc())
     )

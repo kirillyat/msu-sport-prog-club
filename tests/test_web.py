@@ -305,3 +305,69 @@ async def test_rename_form_hidden_from_outsiders(session, client):
     anya = await session.scalar(select(User).where(User.display_name == "Аня"))
     page = await client.get(f"/u/{anya.id}")
     assert f'action="/u/{anya.id}/name"' not in page.text
+
+
+async def test_assignment_form_creates_marathon(session, client):
+    """Марафон теперь создаётся как задание с жёстким дедлайном и плоскими баллами."""
+    from app.models import Assignment, ProblemSet
+
+    await _login(client, "Кирилл", teacher=True)
+    problem_set = ProblemSet(title="Список")
+    session.add(problem_set)
+    await session.commit()
+
+    response = await client.post("/teacher/assignments", data={
+        "title": "Субботний марафон", "problem_set_id": problem_set.id,
+        "group_id": "", "starts_at": "2026-12-06T12:00", "deadline": "2026-12-06T20:00",
+        "hard_deadline": "true", "flat_points": "10", "full_clear_bonus": "20",
+    })
+    assert "Задание выдано" in response.text
+
+    item = await session.scalar(select(Assignment))
+    assert item.group_id is None and item.user_id is None      # весь клуб
+    assert item.hard_deadline is True
+    assert item.points_per_problem == 10.0
+    assert item.full_clear_bonus == 20.0
+
+
+async def test_hard_deadline_requires_a_date(session, client):
+    from app.models import ProblemSet
+
+    await _login(client, "Кирилл", teacher=True)
+    problem_set = ProblemSet(title="Список")
+    session.add(problem_set)
+    await session.commit()
+
+    response = await client.post("/teacher/assignments", data={
+        "title": "Без даты", "problem_set_id": problem_set.id,
+        "group_id": "", "hard_deadline": "true",
+    })
+    assert "без даты не работает" in response.text
+
+
+async def test_only_title_and_description_are_editable(session, client):
+    """Сроки и баллы после выдачи не меняются — иначе рейтинг поедет задним числом."""
+    from app.models import Assignment, ProblemSet
+
+    await _login(client, "Кирилл", teacher=True)
+    problem_set = ProblemSet(title="Список")
+    session.add(problem_set)
+    await session.commit()
+    await client.post("/teacher/assignments", data={
+        "title": "Неделя 1", "problem_set_id": problem_set.id, "group_id": "",
+        "deadline": "2026-12-01T18:00", "flat_points": "7",
+    })
+    item = await session.scalar(select(Assignment))
+    deadline_before, points_before = item.deadline, item.points_per_problem
+
+    response = await client.post(f"/teacher/assignments/{item.id}/edit", data={
+        "title": "Неделя 1 — бинпоиск", "description": "Разбор в понедельник",
+        # Эти поля маршрут не принимает вовсе.
+        "deadline": "2027-01-01T00:00", "flat_points": "999",
+    })
+    assert "Сохранено" in response.text
+    await session.refresh(item)
+    assert item.title == "Неделя 1 — бинпоиск"
+    assert item.description == "Разбор в понедельник"
+    assert item.deadline == deadline_before
+    assert item.points_per_problem == points_before

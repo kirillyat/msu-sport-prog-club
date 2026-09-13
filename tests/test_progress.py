@@ -162,3 +162,30 @@ async def test_complete_when_all_solved(session, world):
     progress = await compute_progress(session, assignment, [world["student"]])
     assert progress.is_complete(world["student"].id) is True
     assert progress.problem_solved_count(world["problems"][0].id) == 1
+
+
+async def test_hard_deadline_does_not_count_late_solves(session, world):
+    """Жёсткий дедлайн: после срока не половина баллов, а ноль."""
+    deadline = BASE + timedelta(days=7)
+    await _accept(session, world, world["problems"][0], deadline + timedelta(hours=1), "s1")
+    assignment = await _assignment(session, world, assigned_at=BASE, deadline=deadline)
+    assignment.hard_deadline = True
+    await session.commit()
+
+    progress = await compute_progress(session, assignment, [world["student"]])
+    cell = progress.cell(world["student"].id, world["problems"][0].id)
+    assert cell.status == SolveStatus.solved_too_late
+    assert cell.counts is False
+    assert progress.solved_count(world["student"].id) == 0
+
+
+async def test_club_wide_assignment_includes_everyone(session, world):
+    """Без группы и без студента — задание для всего клуба."""
+    from app.models import Assignment
+
+    assignment = Assignment(title="Всем", problem_set_id=world["set"].id, assigned_at=BASE)
+    session.add(assignment)
+    await session.commit()
+
+    progress = await compute_progress(session, assignment)
+    assert {u.display_name for u in progress.participants} == {"Аня", "Боря"}
