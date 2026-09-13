@@ -61,3 +61,49 @@ async def client(session: AsyncSession, db: async_sessionmaker, monkeypatch) -> 
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+# --- OIDC ------------------------------------------------------------------
+# Фикстура живёт здесь, а не в tests/test_oidc.py: импортировать её из соседнего
+# тестового модуля нельзя — пакета `tests` нет, и на чистой машине это падает.
+
+@pytest.fixture
+def provider(monkeypatch):
+    """Настроенный OIDC-провайдер и подменённые сетевые вызовы."""
+    import base64
+    import json
+
+    from app import oidc
+    from app.config import settings
+
+    disc = oidc.Discovery(
+        issuer="https://auth.test/application/o/sport/",
+        authorization_endpoint="https://auth.test/application/o/authorize/",
+        token_endpoint="https://auth.test/application/o/token/",
+        userinfo_endpoint="https://auth.test/application/o/userinfo/",
+    )
+    monkeypatch.setattr(settings, "oidc_issuer", disc.issuer)
+    monkeypatch.setattr(settings, "oidc_client_id", "sport")
+    monkeypatch.setattr(settings, "oidc_teacher_groups", "sp-teachers")
+    monkeypatch.setattr(oidc, "_discovery", None)
+
+    calls: dict = {"exchange": [], "profile": {}, "disc": disc}
+
+    def jwt(claims: dict) -> str:
+        body = base64.urlsafe_b64encode(json.dumps(claims).encode()).rstrip(b"=").decode()
+        return f"h.{body}.s"
+
+    async def fake_discover(force=False):
+        return disc
+
+    async def fake_exchange(_disc, code, verifier):
+        calls["exchange"].append((code, verifier))
+        return {"id_token": jwt(calls["claims"]), "access_token": "at"}
+
+    async def fake_userinfo(_disc, _token):
+        return calls["profile"]
+
+    monkeypatch.setattr(oidc, "discover", fake_discover)
+    monkeypatch.setattr(oidc, "exchange_code", fake_exchange)
+    monkeypatch.setattr(oidc, "fetch_userinfo", fake_userinfo)
+    return calls

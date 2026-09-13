@@ -11,7 +11,6 @@ from sqlalchemy import func, select
 
 from app.config import settings
 from app.models import LoginToken, User, utcnow
-from tests.test_oidc import provider  # noqa: F401 — фикстура OIDC-провайдера
 
 
 async def _dev_login(client, name, teacher=False):
@@ -118,7 +117,7 @@ async def test_link_code_useless_in_another_browser(session, client, db):
     assert anya.telegram_id is None
 
 
-async def test_oidc_links_to_existing_account(session, client, provider):  # noqa: F811
+async def test_oidc_links_to_existing_account(session, client, provider):
     await _dev_login(client, "Аня", teacher=True)
     user = await session.scalar(select(User).where(User.display_name == "Аня"))
 
