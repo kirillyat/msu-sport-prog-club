@@ -1,6 +1,6 @@
 """Табло клуба.
 
-Одна метрика: сколько задач из выданных человек закрыл в срок. Задачи
+Одна метрика: сколько задач из выданных человек закрыл до дедлайна. Задачи
 назначает преподаватель, и у всех в группе они одни и те же — поэтому
 взвешивать их по сложности незачем: нафармить лёгких всё равно нельзя.
 
@@ -16,7 +16,15 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Assignment, BonusPoint, GroupMembership, SolveStatus, User, utcnow
+from app.models import (
+    Assignment,
+    BonusPoint,
+    GroupMembership,
+    Role,
+    SolveStatus,
+    User,
+    utcnow,
+)
 from app.services.progress import compute_progress
 
 # За какой срок считается движение в таблице.
@@ -46,7 +54,7 @@ class LeaderboardRow:
 
     @property
     def share(self) -> float:
-        """Доля выданного, закрытая в срок — для полосы прогресса."""
+        """Доля выданного, ушедшая в зачёт — для полосы прогресса."""
         return round(100 * self.solved / self.assigned) if self.assigned else 0
 
     def solved_by(self, moment: datetime) -> int:
@@ -72,7 +80,8 @@ async def _group_member_ids(session: AsyncSession, group_id: int) -> set[int]:
 
 
 async def _users_in_scope(session: AsyncSession, group_id: int | None) -> list[User]:
-    stmt = select(User).where(User.is_active.is_(True))
+    """Преподаватели вне рейтинга: они выдают задания, а не соревнуются."""
+    stmt = select(User).where(User.is_active.is_(True), User.role != Role.teacher)
     if group_id is not None:
         stmt = stmt.join(GroupMembership, GroupMembership.user_id == User.id).where(
             GroupMembership.group_id == group_id
@@ -139,7 +148,7 @@ async def build_leaderboard(
             row = rows[user.id]
             row.assigned += progress.total_problems
             for cell in progress.row(user.id):
-                # В счёт идёт только решённое до дедлайна — иначе «в срок» неправда.
+                # В зачёт идёт только решённое до дедлайна.
                 # Опоздания считаем отдельно и показываем значком.
                 if cell.status == SolveStatus.solved_in_time and cell.solved_at is not None:
                     row.solve_times.append(cell.solved_at)

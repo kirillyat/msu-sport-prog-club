@@ -8,7 +8,8 @@
     <h1>Лидерборд</h1>
     <p class="sub">
       {% if my_place and rows | length > 1 %}Твоё место — <strong>{{ my_place }}</strong> из {{ rows | length }}.{% endif %}
-      Считаются задачи, закрытые в срок. Ровный счёт — выше тот, кто закончил раньше.
+      В зачёт идут задачи, решённые после выдачи и до дедлайна.
+      При равном счёте выше тот, кто закончил раньше.
     </p>
   </div>
   <form method="get" action="/leaderboard" class="inline-form">
@@ -50,7 +51,7 @@
 <div class="card table-wrap" style="padding:6px">
   <table class="board">
     <thead>
-      <tr><th>#</th><th>Студент</th><th>Решено в срок</th></tr>
+      <tr><th>#</th><th>Студент</th><th>Зачтено</th></tr>
     </thead>
     <tbody>
     {% for row in rows %}

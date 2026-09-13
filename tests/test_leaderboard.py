@@ -247,3 +247,17 @@ async def test_first_solver_is_the_earliest_and_needs_a_rival(session, world):
     # В одиночку соревноваться не с кем — отметки нет.
     alone = await compute_progress(session, assignment, [anya])
     assert alone.first_solver(p1.id) is None
+
+
+async def test_teachers_stay_out_of_the_ranking(session, world):
+    from app.models import Role
+
+    anya = world["anya"]
+    anya.role = Role.teacher
+    await session.commit()
+
+    rows = await build_leaderboard(session)
+    assert [r.user.display_name for r in rows] == ["Боря"]
+
+    in_group = await build_leaderboard(session, group_id=world["group"].id)
+    assert [r.user.display_name for r in in_group] == ["Боря"]

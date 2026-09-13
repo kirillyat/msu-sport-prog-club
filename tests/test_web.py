@@ -428,9 +428,9 @@ async def test_leaderboard_shows_podium_and_first_solver(session, client):
     )
 
     await _login(client, "Кирилл", teacher=True)
-    teacher = await session.scalar(select(User).where(User.display_name == "Кирилл"))
     group = Group(title="Осень", join_code="POD123")
-    others = [User(display_name=name) for name in ("Аня", "Боря")]
+    # Преподаватель в рейтинге не участвует, поэтому студентов нужно трое.
+    others = [User(display_name=name) for name in ("Аня", "Боря", "Вика")]
     problem = Problem(platform=Platform.leetcode, external_id="1", slug="two-sum",
                       title="Two Sum", url="https://leetcode.com/problems/two-sum/",
                       difficulty="Easy")
@@ -442,7 +442,7 @@ async def test_leaderboard_shows_podium_and_first_solver(session, client):
     session.add(ProblemSetItem(problem_set_id=problem_set.id, problem_id=problem.id, position=0))
     session.add(Assignment(title="Неделя 1", problem_set_id=problem_set.id,
                            group_id=group.id, assigned_at=when - timedelta(hours=1)))
-    for person in (teacher, *others):
+    for person in others:
         session.add(GroupMembership(group_id=group.id, user_id=person.id))
     account = PlatformAccount(user_id=others[0].id, platform=Platform.leetcode,
                               handle="anya", verified_at=when)

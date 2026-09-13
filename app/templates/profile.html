@@ -80,10 +80,15 @@
 
 <div class="grid stats">
   <div class="stat">{{ icon("trophy") }}
-    <div class="value">{{ score.solved if score else 0 }}{% if score and score.assigned %}<span class="of">/{{ score.assigned }}</span>{% endif %}</div>
+    {% if score %}
+    <div class="value">{{ score.solved }}{% if score.assigned %}<span class="of">/{{ score.assigned }}</span>{% endif %}</div>
     <div class="label">
-      решено в срок{% if place and place_of > 1 %} · {{ place }}-е место из {{ place_of }}{% endif %}
+      задач зачтено{% if place and place_of > 1 %} · {{ place }}-е место из {{ place_of }}{% endif %}
     </div>
+    {% else %}
+    <div class="value">—</div>
+    <div class="label">вне рейтинга</div>
+    {% endif %}
   </div>
   <div class="stat">{{ icon("check") }}
     <div class="value">{{ stats.unique_problems }}</div><div class="label">уникальных задач</div></div>
