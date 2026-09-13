@@ -14,38 +14,13 @@ from app.models import (
     Problem,
     ProblemSet,
     ProblemSetItem,
-    SolveStatus,
     Submission,
     User,
+    utcnow,
 )
-from app.services import scoring
 from app.services.leaderboard import build_leaderboard
 
 BASE = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
-
-
-def test_problem_points_by_difficulty():
-    easy = Problem(platform=Platform.leetcode, external_id="1", slug="a", title="A",
-                   url="", difficulty="Easy")
-    hard = Problem(platform=Platform.leetcode, external_id="2", slug="b", title="B",
-                   url="", difficulty="Hard")
-    cf = Problem(platform=Platform.codeforces, external_id="4A", slug="4a", title="W",
-                 url="", rating=1600)
-    unrated = Problem(platform=Platform.codeforces, external_id="9Z", slug="9z", title="U", url="")
-
-    assert scoring.problem_points(easy) == 1.0
-    assert scoring.problem_points(hard) == 5.0
-    assert scoring.problem_points(cf) == 8.0
-    assert scoring.problem_points(unrated) == scoring.CODEFORCES_FALLBACK
-
-
-def test_late_solve_is_halved():
-    problem = Problem(platform=Platform.leetcode, external_id="1", slug="a", title="A",
-                      url="", difficulty="Medium")
-    assert scoring.points_for(problem, SolveStatus.solved_in_time) == 3.0
-    assert scoring.points_for(problem, SolveStatus.solved_late) == 1.5
-    assert scoring.points_for(problem, SolveStatus.solved_before) == 0.0
-    assert scoring.points_for(problem, SolveStatus.not_solved) == 0.0
 
 
 @pytest.fixture
@@ -99,31 +74,56 @@ async def _accept(session, world, user, problem, when, external_id):
     await session.commit()
 
 
-async def test_first_blood_and_full_clear(session, world):
+async def test_place_counts_problems_solved_in_time(session, world):
     session.add(Assignment(title="З", problem_set_id=world["set"].id,
                            group_id=world["group"].id, assigned_at=BASE))
     await session.commit()
 
     anya, borya = world["anya"], world["borya"]
     p1, p2 = world["problems"]
-    # Аня решает обе, первой по обеим. Боря — только первую, позже.
     await _accept(session, world, anya, p1, BASE + timedelta(hours=1), "a1")
     await _accept(session, world, anya, p2, BASE + timedelta(hours=2), "a2")
     await _accept(session, world, borya, p1, BASE + timedelta(hours=3), "b1")
 
     rows = await build_leaderboard(session)
     by_name = {r.user.display_name: r for r in rows}
-
-    # Аня: 3 + 3 за задачи, +2 +2 first blood, +5 за полный комплект.
-    assert by_name["Аня"].assignment_points == 15.0
-    assert by_name["Аня"].first_bloods == 2
-    assert by_name["Аня"].full_clears == 1
-    # Боря: 3 за задачу, first blood не его, комплект не собран.
-    assert by_name["Боря"].assignment_points == 3.0
-    assert rows[0].user.display_name == "Аня"
+    assert (by_name["Аня"].solved, by_name["Аня"].assigned) == (2, 2)
+    assert (by_name["Боря"].solved, by_name["Боря"].assigned) == (1, 2)
+    assert [r.user.display_name for r in rows] == ["Аня", "Боря"]
+    assert [r.place for r in rows] == [1, 2]
 
 
-async def test_prior_solve_earns_nothing(session, world):
+async def test_equal_score_is_broken_by_who_finished_earlier(session, world):
+    session.add(Assignment(title="З", problem_set_id=world["set"].id,
+                           group_id=world["group"].id, assigned_at=BASE))
+    await session.commit()
+
+    anya, borya = world["anya"], world["borya"]
+    p1, p2 = world["problems"]
+    # Оба решили по одной задаче, но Боря закончил раньше.
+    await _accept(session, world, borya, p1, BASE + timedelta(hours=1), "b1")
+    await _accept(session, world, anya, p2, BASE + timedelta(hours=5), "a1")
+
+    rows = await build_leaderboard(session)
+    assert [r.solved for r in rows] == [1, 1]
+    assert rows[0].user.display_name == "Боря"
+
+
+async def test_late_solve_does_not_count_but_is_shown(session, world):
+    session.add(Assignment(title="З", problem_set_id=world["set"].id,
+                           group_id=world["group"].id, assigned_at=BASE,
+                           deadline=BASE + timedelta(hours=2)))
+    await session.commit()
+    await _accept(session, world, world["anya"], world["problems"][0],
+                  BASE + timedelta(hours=6), "a1")
+
+    rows = await build_leaderboard(session)
+    by_name = {r.user.display_name: r for r in rows}
+    assert by_name["Аня"].solved == 0
+    assert by_name["Аня"].late == 1
+
+
+async def test_prior_solve_does_not_count(session, world):
     session.add(Assignment(title="З", problem_set_id=world["set"].id,
                            group_id=world["group"].id, assigned_at=BASE))
     await session.commit()
@@ -131,15 +131,14 @@ async def test_prior_solve_earns_nothing(session, world):
                   BASE - timedelta(days=30), "old")
 
     rows = await build_leaderboard(session)
-    assert all(r.total == 0 for r in rows)
+    assert all(r.solved == 0 for r in rows)
 
 
-async def test_marathon_counts_only_inside_window(session, world):
-    """Марафон — это задание с жёстким дедлайном и одинаковой ценой задач."""
+async def test_hard_deadline_leaves_nothing_for_latecomers(session, world):
+    """Марафон: после срока решение не засчитывается вовсе, даже как опоздание."""
     session.add(Assignment(
         title="Марафон", problem_set_id=world["set"].id, group_id=world["group"].id,
         assigned_at=BASE, deadline=BASE + timedelta(hours=8), hard_deadline=True,
-        points_per_problem=10.0, full_clear_bonus=20.0,
     ))
     await session.commit()
 
@@ -147,14 +146,12 @@ async def test_marathon_counts_only_inside_window(session, world):
     p1, p2 = world["problems"]
     await _accept(session, world, anya, p1, BASE + timedelta(hours=1), "a1")
     await _accept(session, world, anya, p2, BASE + timedelta(hours=2), "a2")
-    # Боря опоздал — решил после закрытия окна.
     await _accept(session, world, borya, p1, BASE + timedelta(hours=9), "b1")
 
     rows = await build_leaderboard(session)
     by_name = {r.user.display_name: r for r in rows}
-    # 2×10 за задачи + 2×2 за first blood + 20 за полный комплект.
-    assert by_name["Аня"].assignment_points == 44.0
-    assert by_name["Боря"].assignment_points == 0.0
+    assert by_name["Аня"].solved == 2
+    assert (by_name["Боря"].solved, by_name["Боря"].late) == (0, 0)
 
 
 async def test_club_wide_assignment_counts_for_everyone(session, world):
@@ -167,18 +164,55 @@ async def test_club_wide_assignment_counts_for_everyone(session, world):
     rows = await build_leaderboard(session)
     by_name = {r.user.display_name: r for r in rows}
     assert by_name["Боря"].solved == 1
-    assert by_name["Боря"].assignment_points > 0
+    assert by_name["Аня"].assigned == 2
 
 
-async def test_manual_bonus_counts(session, world):
+async def test_manual_bonus_is_shown_but_does_not_move_anyone(session, world):
+    """Бонус жюри — признание, а не валюта: место он не меняет."""
+    session.add(Assignment(title="З", problem_set_id=world["set"].id,
+                           group_id=world["group"].id, assigned_at=BASE))
     session.add(BonusPoint(user_id=world["borya"].id, points=7.5,
                            reason="разбор на семинаре", granted_at=BASE))
     await session.commit()
+    await _accept(session, world, world["anya"], world["problems"][0],
+                  BASE + timedelta(hours=1), "a1")
 
     rows = await build_leaderboard(session)
     by_name = {r.user.display_name: r for r in rows}
-    assert by_name["Боря"].bonus_points == 7.5
-    assert rows[0].user.display_name == "Боря"
+    assert by_name["Боря"].bonus == 7.5
+    assert rows[0].user.display_name == "Аня"
+
+
+async def test_movement_shows_the_week(session, world):
+    """Место неделю назад считается по тем же решениям, отсечённым по времени."""
+    now = utcnow()
+    session.add(Assignment(title="З", problem_set_id=world["set"].id,
+                           group_id=world["group"].id, assigned_at=now - timedelta(days=30)))
+    await session.commit()
+
+    anya, borya = world["anya"], world["borya"]
+    p1, p2 = world["problems"]
+    # Боря вёл неделю назад, Аня обогнала его за последние дни.
+    await _accept(session, world, borya, p1, now - timedelta(days=10), "b1")
+    await _accept(session, world, anya, p1, now - timedelta(days=2), "a1")
+    await _accept(session, world, anya, p2, now - timedelta(days=1), "a2")
+
+    rows = await build_leaderboard(session)
+    by_name = {r.user.display_name: r for r in rows}
+    assert by_name["Аня"].place == 1
+    assert by_name["Аня"].movement == 1   # была второй
+    assert by_name["Боря"].movement == -1
+
+
+async def test_no_movement_without_history(session, world):
+    """Пока недельной истории нет, стрелки не показываем — иначе они врут."""
+    session.add(Assignment(title="З", problem_set_id=world["set"].id,
+                           group_id=world["group"].id, assigned_at=utcnow()))
+    await session.commit()
+    await _accept(session, world, world["anya"], world["problems"][0], utcnow(), "a1")
+
+    rows = await build_leaderboard(session)
+    assert all(r.movement is None for r in rows)
 
 
 async def test_group_filter_narrows_scope(session, world):
@@ -191,3 +225,25 @@ async def test_group_filter_narrows_scope(session, world):
 
     in_group = await build_leaderboard(session, group_id=world["group"].id)
     assert {r.user.display_name for r in in_group} == {"Аня", "Боря"}
+
+
+async def test_first_solver_is_the_earliest_and_needs_a_rival(session, world):
+    from app.services.progress import compute_progress
+
+    assignment = Assignment(title="З", problem_set_id=world["set"].id,
+                            group_id=world["group"].id, assigned_at=BASE)
+    session.add(assignment)
+    await session.commit()
+
+    anya, borya = world["anya"], world["borya"]
+    p1 = world["problems"][0]
+    await _accept(session, world, borya, p1, BASE + timedelta(hours=1), "b1")
+    await _accept(session, world, anya, p1, BASE + timedelta(hours=2), "a1")
+
+    both = await compute_progress(session, assignment, [anya, borya])
+    assert both.first_solver(p1.id).display_name == "Боря"
+    assert both.first_solver(world["problems"][1].id) is None  # никто не решил
+
+    # В одиночку соревноваться не с кем — отметки нет.
+    alone = await compute_progress(session, assignment, [anya])
+    assert alone.first_solver(p1.id) is None

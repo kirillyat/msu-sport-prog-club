@@ -65,6 +65,17 @@ class AssignmentProgress:
     def total_problems(self) -> int:
         return len(self.problems)
 
+    def first_solver(self, problem_id: int) -> User | None:
+        """Кто закрыл задачу раньше всех. В одиночном задании соревноваться не с кем."""
+        if len(self.participants) < 2:
+            return None
+        solved = [
+            (cell.solved_at, user)
+            for user in self.participants
+            if (cell := self.cell(user.id, problem_id)).counts and cell.solved_at is not None
+        ]
+        return min(solved, key=lambda pair: pair[0])[1] if solved else None
+
     def is_complete(self, user_id: int) -> bool:
         return self.total_problems > 0 and self.solved_count(user_id) == self.total_problems
 

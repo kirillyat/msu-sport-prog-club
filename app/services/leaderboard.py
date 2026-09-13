@@ -1,30 +1,67 @@
+"""Табло клуба.
+
+Одна метрика: сколько задач из выданных человек закрыл в срок. Задачи
+назначает преподаватель, и у всех в группе они одни и те же — поэтому
+взвешивать их по сложности незачем: нафармить лёгких всё равно нельзя.
+
+Равный счёт разводит тот, кто раньше закончил. Ручные бонусы жюри на место
+не влияют — они показываются отдельно, чтобы итог оставался проверяемым.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Assignment, BonusPoint, GroupMembership, SolveStatus, User
-from app.services import scoring
+from app.models import Assignment, BonusPoint, GroupMembership, SolveStatus, User, utcnow
 from app.services.progress import compute_progress
+
+# За какой срок считается движение в таблице.
+MOVEMENT_WINDOW = timedelta(days=7)
+# Кто не решил ничего, сортируется последним.
+NEVER = datetime.max.replace(tzinfo=UTC)
 
 
 @dataclass(slots=True)
 class LeaderboardRow:
     user: User
-    assignment_points: float = 0.0
-    bonus_points: float = 0.0
-    solved: int = 0
+    assigned: int = 0
     late: int = 0
-    full_clears: int = 0
-    first_bloods: int = 0
-    details: list[str] = field(default_factory=list)
+    bonus: float = 0.0
+    # Моменты засчитанных решений — из них считаются и счёт, и порядок, и движение.
+    solve_times: list[datetime] = field(default_factory=list)
+    place: int = 0
+    movement: int | None = None
 
     @property
-    def total(self) -> float:
-        return round(self.assignment_points + self.bonus_points, 2)
+    def solved(self) -> int:
+        return len(self.solve_times)
+
+    @property
+    def last_solved_at(self) -> datetime | None:
+        return max(self.solve_times) if self.solve_times else None
+
+    @property
+    def share(self) -> float:
+        """Доля выданного, закрытая в срок — для полосы прогресса."""
+        return round(100 * self.solved / self.assigned) if self.assigned else 0
+
+    def solved_by(self, moment: datetime) -> int:
+        return sum(1 for t in self.solve_times if t <= moment)
+
+    def finished_by(self, moment: datetime) -> datetime | None:
+        done = [t for t in self.solve_times if t <= moment]
+        return max(done) if done else None
+
+
+def _order(row: LeaderboardRow, moment: datetime | None = None) -> tuple:
+    """Больше решено — выше; при равенстве выше тот, кто закончил раньше."""
+    solved = row.solved if moment is None else row.solved_by(moment)
+    last = row.last_solved_at if moment is None else row.finished_by(moment)
+    return (-solved, last or NEVER, row.user.display_name)
 
 
 async def _group_member_ids(session: AsyncSession, group_id: int) -> set[int]:
@@ -59,6 +96,23 @@ async def _assignments_in_scope(
     return list((await session.execute(stmt)).scalars().all())
 
 
+def _set_places(rows: list[LeaderboardRow]) -> list[LeaderboardRow]:
+    """Места и движение за неделю. Движения нет, пока нет недельной истории."""
+    rows.sort(key=_order)
+    for index, row in enumerate(rows, start=1):
+        row.place = index
+
+    week_ago = utcnow() - MOVEMENT_WINDOW
+    if not any(row.solved_by(week_ago) for row in rows):
+        return rows
+
+    was = sorted(rows, key=lambda r: _order(r, week_ago))
+    old_place = {row.user.id: index for index, row in enumerate(was, start=1)}
+    for row in rows:
+        row.movement = old_place[row.user.id] - row.place
+    return rows
+
+
 async def build_leaderboard(
     session: AsyncSession,
     *,
@@ -69,10 +123,9 @@ async def build_leaderboard(
     rows = {u.id: LeaderboardRow(user=u) for u in users}
     if not rows:
         return []
-    user_ids = list(rows)
 
     for assignment in await _assignments_in_scope(session, group_id, since):
-        participants = [u for u in users if u.id in rows]
+        participants = list(users)
         if assignment.user_id is not None:
             participants = [u for u in participants if u.id == assignment.user_id]
         elif assignment.group_id is not None:
@@ -82,51 +135,24 @@ async def build_leaderboard(
             continue
 
         progress = await compute_progress(session, assignment, participants)
-        weights = {item.problem_id: item.weight for item in assignment.problem_set.items}
-
-        for problem in progress.problems:
-            solvers = [
-                (u, progress.cell(u.id, problem.id))
-                for u in participants
-                if progress.cell(u.id, problem.id).counts
-            ]
-            solvers.sort(key=lambda pair: pair[1].solved_at or datetime.max)
-            for index, (user, cell) in enumerate(solvers):
-                row = rows[user.id]
-                row.assignment_points += scoring.points_for(
-                    problem,
-                    cell.status,
-                    weights.get(problem.id, 1.0),
-                    assignment.points_per_problem,
-                )
-                row.solved += 1
-                if cell.status == SolveStatus.solved_late:
-                    row.late += 1
-                # Первым решившим считаем только внутри группового задания.
-                if index == 0 and len(participants) > 1:
-                    row.assignment_points += scoring.FIRST_BLOOD_BONUS
-                    row.first_bloods += 1
-
-        bonus = (
-            assignment.full_clear_bonus
-            if assignment.full_clear_bonus is not None
-            else scoring.FULL_CLEAR_BONUS
-        )
         for user in participants:
-            if progress.is_complete(user.id):
-                rows[user.id].assignment_points += bonus
-                rows[user.id].full_clears += 1
+            row = rows[user.id]
+            row.assigned += progress.total_problems
+            for cell in progress.row(user.id):
+                # В счёт идёт только решённое до дедлайна — иначе «в срок» неправда.
+                # Опоздания считаем отдельно и показываем значком.
+                if cell.status == SolveStatus.solved_in_time and cell.solved_at is not None:
+                    row.solve_times.append(cell.solved_at)
+                elif cell.status == SolveStatus.solved_late:
+                    row.late += 1
 
     bonus_stmt = select(BonusPoint.user_id, func.sum(BonusPoint.points)).where(
-        BonusPoint.user_id.in_(user_ids)
+        BonusPoint.user_id.in_(list(rows))
     )
     if since is not None:
         bonus_stmt = bonus_stmt.where(BonusPoint.granted_at >= since)
     for user_id, total in (await session.execute(bonus_stmt.group_by(BonusPoint.user_id))).all():
         if user_id in rows:
-            rows[user_id].bonus_points += float(total or 0)
+            rows[user_id].bonus = round(float(total or 0), 2)
 
-    for row in rows.values():
-        row.assignment_points = round(row.assignment_points, 2)
-
-    return sorted(rows.values(), key=lambda r: (-r.total, r.user.display_name))
+    return _set_places(list(rows.values()))

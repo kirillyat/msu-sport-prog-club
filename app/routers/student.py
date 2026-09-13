@@ -12,7 +12,12 @@ from app.models import Assignment, Group, GroupMembership, Platform, User, utcno
 from app.routers.announcements import upcoming_for_dashboard
 from app.services.feed import build_feed
 from app.services.leaderboard import build_leaderboard
-from app.services.progress import assignments_for_user, compute_progress, groups_for_user
+from app.services.progress import (
+    assignments_for_user,
+    compute_progress,
+    groups_for_user,
+    participants_for_assignment,
+)
 from app.services.stats import user_stats
 from app.services.sync import sync_account
 from app.templating import plural_ru, templates
@@ -84,7 +89,10 @@ async def assignment_detail(
         if not allowed:
             return RedirectResponse("/?err=Это+задание+не+для+тебя", status_code=303)
 
-    progress = await compute_progress(session, assignment, [user])
+    # Считаем по всем участникам, а не только по себе: иначе не узнать,
+    # кто закрыл задачу первым.
+    everyone = await participants_for_assignment(session, assignment)
+    progress = await compute_progress(session, assignment, everyone or [user])
     return templates.TemplateResponse(
         request,
         "assignment.html",

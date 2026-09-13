@@ -26,7 +26,7 @@
 <div class="card table-wrap" style="padding:6px">
   <table>
     <thead>
-      <tr><th>#</th><th>Задача</th><th>Платформа</th><th>Сложность</th><th>Статус</th><th>Когда</th></tr>
+      <tr><th>#</th><th>Задача</th><th>Платформа</th><th>Сложность</th><th>Статус</th><th>Когда</th><th>Первым</th></tr>
     </thead>
     <tbody>
     {% for problem in problems %}
@@ -51,6 +51,11 @@
           {% if cell.solved_at %}{{ cell.solved_at | ago }}
           {% elif cell.first_ever_at %}{{ cell.first_ever_at | ago }}
           {% else %}—{% endif %}
+        </td>
+        <td class="small">
+          {% set first = progress.first_solver(problem.id) %}
+          {% if first %}<a class="badge first" href="/u/{{ first.id }}">{{ icon("flame") }}{{ first.display_name }}</a>
+          {% else %}<span class="muted">—</span>{% endif %}
         </td>
       </tr>
     {% endfor %}

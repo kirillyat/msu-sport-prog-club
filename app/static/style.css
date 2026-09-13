@@ -367,8 +367,37 @@ a.badge:hover { text-decoration: none; opacity: .85; }
    ============================================================ */
 .rank { font-family: var(--display); font-weight: 800; font-size: 18px; white-space: nowrap; width: 1%; text-align: center; }
 .rank .icon { display: none; }
-td.rank.m1, td.rank.m2, td.rank.m3 { background: var(--inv-bg); color: var(--inv-text); }
-td.rank.m2, td.rank.m3 { opacity: .75; }
+
+/* --- табло ------------------------------------------------------------- */
+/* Подиум: первое место крупнее и выворочено, соседние — обычными карточками. */
+.podium { display: grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 10px; align-items: end; margin-bottom: 14px; }
+.podium-card { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 10px; border: 2px solid var(--ink); text-decoration: none; color: inherit; }
+.podium-card.p1 { order: 2; padding-top: 22px; background: var(--inv-bg); color: var(--inv-text); }
+.podium-card.p2 { order: 1; } .podium-card.p3 { order: 3; }
+.podium-card.me { outline: 3px solid var(--ink); outline-offset: 2px; }
+.podium-card.p1.me { outline-color: var(--inv-bg); }
+.podium-place { font-family: var(--display); font-weight: 800; font-size: 12px; letter-spacing: .12em; }
+.podium-name { font-weight: 700; font-size: 13px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.podium-score { font-family: var(--display); font-weight: 800; font-size: 26px; line-height: 1; }
+.podium-score .of { font-size: 14px; opacity: .6; }
+.stat .value .of { font-size: 15px; opacity: .55; }
+.podium-card.p1 .avatar { background: var(--inv-text); color: var(--inv-bg); }
+
+/* Движение за неделю. Цветом не выделяем — плотность и стрелка и так читаются. */
+.move { display: inline-block; font-family: var(--mono); font-size: 10px; font-weight: 700; margin-left: 2px; vertical-align: 2px; }
+.move.down { opacity: .5; }
+
+/* Клетка счёта: полоса доли и дробь рядом. */
+.score-cell { display: flex; align-items: center; gap: 10px; }
+.score-cell .bar { flex: 1; min-width: 60px; max-width: 220px; }
+.score-cell .score-num { white-space: nowrap; }
+.score-cell b { font-family: var(--display); font-size: 16px; }
+
+@media (max-width: 640px) {
+  .podium { grid-template-columns: 1fr; }
+  .podium-card.p1, .podium-card.p2, .podium-card.p3 { order: 0; flex-direction: row; justify-content: flex-start; }
+  .score-cell .bar { display: none; }
+}
 tr.me { outline: var(--rule) solid var(--ink); outline-offset: -3px; }
 .points { font-family: var(--display); font-weight: 800; font-size: 18px; }
 

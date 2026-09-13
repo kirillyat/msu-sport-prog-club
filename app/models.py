@@ -283,12 +283,8 @@ class Assignment(Base):
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     assigned_at: Mapped[datetime] = mapped_column(default=utcnow)
     deadline: Mapped[datetime | None] = mapped_column()
-    # Жёсткий дедлайн: после срока не половина баллов, а ноль. Так делаются марафоны.
+    # Жёсткий дедлайн: после срока решение не засчитывается вовсе. Так делаются марафоны.
     hard_deadline: Mapped[bool] = mapped_column(Boolean, default=False)
-    # NULL — баллы по сложности задачи; число — одинаковая цена за любую задачу.
-    points_per_problem: Mapped[float | None] = mapped_column(Float)
-    # NULL — стандартный бонус за полный комплект из scoring.py.
-    full_clear_bonus: Mapped[float | None] = mapped_column(Float)
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     # Засчитывать решения, сделанные ДО выдачи задания. По умолчанию нет.
     count_prior_solves: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -6,21 +6,10 @@
   <div>
     <p class="eyebrow">табло</p>
     <h1>Лидерборд</h1>
-    <p class="sub" style="margin-bottom:8px">
+    <p class="sub">
       {% if my_place and rows | length > 1 %}Твоё место — <strong>{{ my_place }}</strong> из {{ rows | length }}.{% endif %}
-      За решённые задачи и ручные бонусы.
+      Считаются задачи, закрытые в срок. Ровный счёт — выше тот, кто закончил раньше.
     </p>
-    <details class="formula">
-      <summary>Как считаются баллы</summary>
-      <ul>
-        <li>LeetCode: Easy — 1, Medium — 3, Hard — 5 баллов.</li>
-        <li>Codeforces: рейтинг ÷ 200 (задача 1600 → 8 баллов).</li>
-        <li>Решено после дедлайна — половина баллов.</li>
-        <li>Первым в группе — плюс 2.</li>
-        <li>Задание целиком — плюс 5 (у марафонов бонус свой).</li>
-        <li>Решённое до выдачи задания не считается.</li>
-      </ul>
-    </details>
   </div>
   <form method="get" action="/leaderboard" class="inline-form">
     <div class="field">
@@ -44,35 +33,51 @@
 </div>
 
 {% if rows %}
-{# Медали при двух участниках выглядят нелепо — показываем от трёх. #}
-{% set show_medals = rows | length >= 3 %}
+{# Подиум имеет смысл от трёх участников и только когда кто-то что-то решил. #}
+{% if rows | length >= 3 and rows[0].solved %}
+<div class="podium">
+  {% for row in rows[:3] %}
+  <a class="podium-card p{{ loop.index }} {{ 'me' if row.user.id == user.id }}" href="/u/{{ row.user.id }}">
+    <span class="podium-place">{{ loop.index }}</span>
+    {{ avatar(row.user, "lg") }}
+    <span class="podium-name">{{ row.user.display_name }}</span>
+    <span class="podium-score">{{ row.solved }}<span class="of">/{{ row.assigned }}</span></span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
 <div class="card table-wrap" style="padding:6px">
-  <table>
+  <table class="board">
     <thead>
-      <tr>
-        <th>#</th><th>Студент</th><th>Всего</th><th>Решено</th>
-        <th class="col-extra">Задания</th><th class="col-extra">Бонусы</th><th class="col-extra">С опозданием</th>
-        <th class="col-extra">Первым</th>
-      </tr>
+      <tr><th>#</th><th>Студент</th><th>Решено в срок</th></tr>
     </thead>
     <tbody>
     {% for row in rows %}
       <tr class="{{ 'me' if row.user.id == user.id }}">
-        <td class="rank {% if show_medals and loop.index <= 3 %}m{{ loop.index }}{% endif %}">
-          {% if show_medals and loop.index <= 3 %}{{ icon("medal") }}{% endif %}{{ loop.index }}
+        <td class="rank">
+          {{ row.place }}
+          {% if row.movement %}
+          <span class="move {{ 'up' if row.movement > 0 else 'down' }}"
+                title="за неделю">{{ '▲' if row.movement > 0 else '▼' }}{{ row.movement | abs }}</span>
+          {% endif %}
         </td>
         <td>
           <span class="row" style="gap:9px; flex-wrap:nowrap">
             {{ avatar(row.user, "sm") }}
             <a href="/u/{{ row.user.id }}">{{ row.user.display_name }}</a>
+            {% if row.bonus %}<span class="badge info" title="бонус от жюри">+{{ row.bonus | pts }}</span>{% endif %}
+            {% if row.late %}<span class="badge warn" title="решено после дедлайна">{{ icon("clock") }}{{ row.late }}</span>{% endif %}
           </span>
         </td>
-        <td class="points">{{ row.total | pts }}</td>
-        <td class="num">{{ row.solved }}</td>
-        <td class="num muted col-extra">{{ row.assignment_points | pts }}</td>
-        <td class="num muted col-extra">{{ row.bonus_points | pts }}</td>
-        <td class="num muted col-extra">{{ row.late }}</td>
-        <td class="num muted col-extra">{{ row.first_bloods }}</td>
+        <td>
+          {% if row.assigned %}
+          <span class="score-cell">
+            <span class="bar"><span style="width: {{ row.share }}%"></span></span>
+            <span class="score-num"><b>{{ row.solved }}</b><span class="muted">/{{ row.assigned }}</span></span>
+          </span>
+          {% else %}<span class="muted small">заданий не было</span>{% endif %}
+        </td>
       </tr>
     {% endfor %}
     </tbody>

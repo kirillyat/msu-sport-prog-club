@@ -411,8 +411,6 @@ async def create_assignment(
     starts_at: str = Form(""),
     deadline: str = Form(""),
     hard_deadline: bool = Form(False),
-    flat_points: str = Form(""),
-    full_clear_bonus: str = Form(""),
     count_prior_solves: bool = Form(False),
 ):
     """Все правила задаются здесь: потом меняются только название и описание."""
@@ -431,15 +429,6 @@ async def create_assignment(
     if end is not None and end <= start:
         return _redirect("/teacher/assignments", error="Дедлайн+раньше+начала")
 
-    def number(raw: str) -> float | None:
-        raw = raw.strip().replace(",", ".")
-        return float(raw) if raw else None
-
-    try:
-        points = number(flat_points)
-        bonus = number(full_clear_bonus)
-    except ValueError:
-        return _redirect("/teacher/assignments", error="Баллы+должны+быть+числом")
     if hard_deadline and end is None:
         return _redirect("/teacher/assignments", error="Жёсткий+дедлайн+без+даты+не+работает")
 
@@ -451,8 +440,6 @@ async def create_assignment(
         assigned_at=start,
         deadline=end,
         hard_deadline=hard_deadline,
-        points_per_problem=points,
-        full_clear_bonus=bonus,
         created_by_id=user.id,
         count_prior_solves=count_prior_solves,
     )

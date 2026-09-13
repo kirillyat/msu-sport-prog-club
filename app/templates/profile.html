@@ -80,9 +80,9 @@
 
 <div class="grid stats">
   <div class="stat">{{ icon("trophy") }}
-    <div class="value">{{ score.total | pts if score else 0 }}</div>
+    <div class="value">{{ score.solved if score else 0 }}{% if score and score.assigned %}<span class="of">/{{ score.assigned }}</span>{% endif %}</div>
     <div class="label">
-      баллов{% if place and place_of > 1 %} · {{ place }}-е место из {{ place_of }}{% endif %}
+      решено в срок{% if place and place_of > 1 %} · {{ place }}-е место из {{ place_of }}{% endif %}
     </div>
   </div>
   <div class="stat">{{ icon("check") }}

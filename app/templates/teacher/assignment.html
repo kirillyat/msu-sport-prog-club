@@ -9,9 +9,6 @@
   {% if assignment.deadline %}
     · дедлайн {{ assignment.deadline | dt }}{% if assignment.hard_deadline %} (жёсткий){% endif %}
   {% endif %}
-  {% if assignment.points_per_problem is not none %}
-    · {{ assignment.points_per_problem | pts }} за задачу
-  {% endif %}
 </p>
 {% if assignment.description %}<p class="sub">{{ assignment.description }}</p>{% endif %}
 
@@ -97,7 +94,7 @@
 <h2>{{ icon("layers") }} Задачи</h2>
 <div class="card table-wrap" style="padding:6px">
   <table>
-    <thead><tr><th>#</th><th>Задача</th><th>Платформа</th><th>Сложность</th><th>Решили</th></tr></thead>
+    <thead><tr><th>#</th><th>Задача</th><th>Платформа</th><th>Сложность</th><th>Решили</th><th>Первым</th></tr></thead>
     <tbody>
     {% for problem in progress.problems %}
       {% set solved = progress.problem_solved_count(problem.id) %}
@@ -110,6 +107,11 @@
         <td class="num">
           {{ solved }} / {{ progress.participants | length }}
           {% if progress.participants and solved == 0 %}<span class="badge bad">{{ icon("alert") }} никто</span>{% endif %}
+        </td>
+        <td class="small">
+          {% set first = progress.first_solver(problem.id) %}
+          {% if first %}<a class="badge first" href="/u/{{ first.id }}">{{ icon("flame") }}{{ first.display_name }}</a>
+          {% else %}<span class="muted">—</span>{% endif %}
         </td>
       </tr>
     {% endfor %}

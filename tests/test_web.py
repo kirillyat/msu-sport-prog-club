@@ -322,15 +322,14 @@ async def test_assignment_form_creates_marathon(session, client):
     response = await client.post("/teacher/assignments", data={
         "title": "Субботний марафон", "problem_set_id": problem_set.id,
         "group_id": "", "starts_at": "2026-12-06T12:00", "deadline": "2026-12-06T20:00",
-        "hard_deadline": "true", "flat_points": "10", "full_clear_bonus": "20",
+        "hard_deadline": "true",
     })
     assert "Задание выдано" in response.text
 
     item = await session.scalar(select(Assignment))
     assert item.group_id is None and item.user_id is None      # весь клуб
     assert item.hard_deadline is True
-    assert item.points_per_problem == 10.0
-    assert item.full_clear_bonus == 20.0
+    assert item.deadline is not None
 
 
 async def test_hard_deadline_requires_a_date(session, client):
@@ -349,7 +348,7 @@ async def test_hard_deadline_requires_a_date(session, client):
 
 
 async def test_only_title_and_description_are_editable(session, client):
-    """Сроки и баллы после выдачи не меняются — иначе рейтинг поедет задним числом."""
+    """Сроки после выдачи не меняются — иначе рейтинг поедет задним числом."""
     from app.models import Assignment, ProblemSet
 
     await _login(client, "Кирилл", teacher=True)
@@ -358,22 +357,21 @@ async def test_only_title_and_description_are_editable(session, client):
     await session.commit()
     await client.post("/teacher/assignments", data={
         "title": "Неделя 1", "problem_set_id": problem_set.id, "group_id": "",
-        "deadline": "2026-12-01T18:00", "flat_points": "7",
+        "deadline": "2026-12-01T18:00",
     })
     item = await session.scalar(select(Assignment))
-    deadline_before, points_before = item.deadline, item.points_per_problem
+    deadline_before = item.deadline
 
     response = await client.post(f"/teacher/assignments/{item.id}/edit", data={
         "title": "Неделя 1 — бинпоиск", "description": "Разбор в понедельник",
-        # Эти поля маршрут не принимает вовсе.
-        "deadline": "2027-01-01T00:00", "flat_points": "999",
+        # Это поле маршрут не принимает вовсе.
+        "deadline": "2027-01-01T00:00",
     })
     assert "Сохранено" in response.text
     await session.refresh(item)
     assert item.title == "Неделя 1 — бинпоиск"
     assert item.description == "Разбор в понедельник"
     assert item.deadline == deadline_before
-    assert item.points_per_problem == points_before
 
 
 async def test_gravatar_url_is_sha256_of_trimmed_lowercased_email():
@@ -415,3 +413,51 @@ async def test_gravatar_rejects_junk_and_other_people(session, client):
     await client.post(f"/u/{other.id}/gravatar", data={"gravatar_email": "me@example.com"})
     await session.refresh(other)
     assert other.gravatar_email is None
+
+
+async def test_leaderboard_shows_podium_and_first_solver(session, client):
+    from datetime import UTC, datetime, timedelta
+
+    from app.models import (
+        Assignment,
+        GroupMembership,
+        PlatformAccount,
+        ProblemSet,
+        ProblemSetItem,
+        Submission,
+    )
+
+    await _login(client, "Кирилл", teacher=True)
+    teacher = await session.scalar(select(User).where(User.display_name == "Кирилл"))
+    group = Group(title="Осень", join_code="POD123")
+    others = [User(display_name=name) for name in ("Аня", "Боря")]
+    problem = Problem(platform=Platform.leetcode, external_id="1", slug="two-sum",
+                      title="Two Sum", url="https://leetcode.com/problems/two-sum/",
+                      difficulty="Easy")
+    problem_set = ProblemSet(title="Список")
+    session.add_all([group, problem, problem_set, *others])
+    await session.commit()
+
+    when = datetime.now(UTC) - timedelta(hours=1)
+    session.add(ProblemSetItem(problem_set_id=problem_set.id, problem_id=problem.id, position=0))
+    session.add(Assignment(title="Неделя 1", problem_set_id=problem_set.id,
+                           group_id=group.id, assigned_at=when - timedelta(hours=1)))
+    for person in (teacher, *others):
+        session.add(GroupMembership(group_id=group.id, user_id=person.id))
+    account = PlatformAccount(user_id=others[0].id, platform=Platform.leetcode,
+                              handle="anya", verified_at=when)
+    session.add(account)
+    await session.commit()
+    session.add(Submission(
+        user_id=others[0].id, platform_account_id=account.id, platform=Platform.leetcode,
+        external_id="s1", problem_id=problem.id, problem_slug=problem.slug,
+        verdict="Accepted", is_accepted=True, submitted_at=when,
+    ))
+    await session.commit()
+
+    board = (await client.get("/leaderboard")).text
+    assert "podium" in board                 # трое участников — подиум показан
+    assert "Аня" in board and "1</b>" in board
+
+    page = (await client.get("/teacher/assignments/1")).text
+    assert "Первым" in page and "Аня" in page
