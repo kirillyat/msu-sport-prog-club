@@ -163,6 +163,18 @@ docker compose cp web:/data/backup.db ./backup-$(date +%F).db
 - сборка Docker-образа и дымовой тест: контейнер поднимается и отвечает на `/healthz`;
 - проверка, что с дефолтным `SECRET_KEY` контейнер отказывается стартовать.
 
+**`mirror.yml`** — одностороннее зеркало в Gitea на каждый push в `main`
+и на теги. GitHub — источник, Gitea повторяет за ним. Нужны секреты
+`MIRROR_URL`, `MIRROR_USER`, `MIRROR_TOKEN` (токен Gitea с правом записи);
+пока их нет, задание пропускается.
+
+Локально то же самое делает второй адрес отправки у `origin`:
+
+```bash
+git remote -v          # origin отправляет и в GitHub, и в Gitea
+git push origin main   # один push — оба репозитория
+```
+
 **`deploy.yml`** — выкатка вручную (`workflow_dispatch`). Пока не заданы
 секреты, ничего не запускается. Нужные секреты репозитория:
 
