@@ -4,7 +4,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.deps import CurrentUser, SessionDep
 from app.models import Assignment, Event, Group, GroupMembership, Platform, User, utcnow
@@ -176,6 +176,7 @@ async def _profile(request: Request, session: SessionDep, viewer: User, target: 
             "assignment_cards": assignment_cards,
             "recent": await build_feed(session, viewer, only_user=target, limit=5),
             "is_self": viewer.id == target.id,
+            "can_rename": viewer.id == target.id or viewer.is_teacher,
             "can_sync": bool(
                 (viewer.id == target.id or viewer.is_teacher)
                 and [a for a in target.accounts if a.is_verified]
@@ -213,6 +214,47 @@ async def sync_profile(session: SessionDep, user: CurrentUser, user_id: int):
         return RedirectResponse(f"{back}?err=" + quote("; ".join(errors)), status_code=303)
     word = plural_ru(added, "новое решение", "новых решения", "новых решений")
     return RedirectResponse(f"{back}?ok=" + quote(f"Обновлено: {added} {word}"), status_code=303)
+
+
+MAX_NAME = 120
+
+
+@router.post("/u/{user_id}/name")
+async def rename_user(
+    session: SessionDep, user: CurrentUser, user_id: int, display_name: str = Form(...)
+):
+    """Своё имя правит любой, чужое — только преподаватель."""
+    target = await session.get(User, user_id)
+    if target is None:
+        return RedirectResponse("/?err=Профиль+не+найден", status_code=303)
+    if target.id != user.id and not user.is_teacher:
+        return RedirectResponse(f"/u/{user_id}?err=Чужое+имя+менять+нельзя", status_code=303)
+
+    back = "/me" if target.id == user.id else f"/u/{target.id}"
+    name = " ".join(display_name.split())
+    if not name:
+        return RedirectResponse(f"{back}?err=" + quote("Имя не может быть пустым"), status_code=303)
+    if len(name) > MAX_NAME:
+        return RedirectResponse(
+            f"{back}?err=" + quote(f"Не длиннее {MAX_NAME} символов"), status_code=303
+        )
+    if name == target.display_name:
+        return RedirectResponse(back, status_code=303)
+
+    # Тёзки путают матрицу и ленту, а в dev-режиме ещё и вход по имени.
+    taken = await session.scalar(
+        select(User).where(
+            func.lower(User.display_name) == name.lower(),
+            User.id != target.id,
+            User.is_active.is_(True),
+        )
+    )
+    if taken is not None:
+        return RedirectResponse(f"{back}?err=" + quote("Такое имя уже занято"), status_code=303)
+
+    target.display_name = name
+    await session.commit()
+    return RedirectResponse(f"{back}?ok=" + quote("Имя изменено"), status_code=303)
 
 
 @router.post("/groups/join")

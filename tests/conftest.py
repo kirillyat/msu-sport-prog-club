@@ -12,18 +12,23 @@ os.environ.setdefault("DEV_LOGIN_ENABLED", "true")
 os.environ.setdefault("ENABLE_SCHEDULER", "false")
 os.environ.setdefault("ENABLE_BOT", "false")
 
+from sqlalchemy import event  # noqa: E402
 from sqlalchemy.ext.asyncio import (  # noqa: E402
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
 
+from app.db import configure_connection  # noqa: E402
 from app.models import Base  # noqa: E402
 
 
 @pytest_asyncio.fixture
 async def db(tmp_path: Path) -> AsyncIterator[async_sessionmaker]:
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'test.db'}")
+    # Те же настройки соединения, что и у приложения, иначе тесты проверяют
+    # не то поведение: например, юникодный lower().
+    event.listen(engine.sync_engine, "connect", configure_connection)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)

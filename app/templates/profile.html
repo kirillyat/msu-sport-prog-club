@@ -17,7 +17,24 @@
   <span class="avatar lg" style="--h: {{ target.display_name | hue }}">{{ target.display_name | initials }}</span>
   <div style="min-width:0; flex:1">
     <p class="eyebrow">участник #{{ "%04d" % target.id }}</p>
-    <h1 style="margin-bottom:4px">{{ target.display_name }}</h1>
+    <h1 style="margin-bottom:4px">
+      {{ target.display_name }}
+      {% if can_rename %}
+      <button class="rename-toggle" type="button" title="Изменить имя"
+              onclick="document.getElementById('rename').toggleAttribute('hidden');
+                       document.getElementById('rename-input').focus()">{{ icon("edit") }}</button>
+      {% endif %}
+    </h1>
+    {% if can_rename %}
+    <form method="post" action="/u/{{ target.id }}/name" class="inline-form" id="rename" hidden>
+      <div class="field" style="min-width:220px">
+        <label for="rename-input">Имя</label>
+        <input type="text" id="rename-input" name="display_name" maxlength="120"
+               value="{{ target.display_name }}" autocomplete="off" required>
+      </div>
+      <button type="submit">{{ icon("check") }} Сохранить</button>
+    </form>
+    {% endif %}
     <div class="row small muted">
       {% if target.telegram_username %}<span>@{{ target.telegram_username }}</span>{% endif %}
       {% if target.is_teacher %}<span class="badge info">{{ icon("shield") }} преподаватель</span>{% endif %}

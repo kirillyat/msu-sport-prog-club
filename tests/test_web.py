@@ -233,3 +233,75 @@ async def test_login_page_wires_telegram_script(session, client, monkeypatch):
     assert "telegram-login.js" in page.text
     # Инлайновых скриптов на странице не осталось — логика в одном файле.
     assert "<script>" not in page.text.split("</head>", 1)[1]
+
+
+async def test_user_renames_self(session, client):
+    await _login(client, "Аня", teacher=True)
+    user = await session.scalar(select(User).where(User.display_name == "Аня"))
+
+    response = await client.post(f"/u/{user.id}/name", data={"display_name": "  Аня  Ковалёва "})
+    assert "Имя изменено" in response.text
+    await session.refresh(user)
+    # Лишние пробелы схлопываются, иначе в таблицах появляются «разные» люди.
+    assert user.display_name == "Аня Ковалёва"
+
+
+async def test_empty_name_rejected(session, client):
+    await _login(client, "Аня", teacher=True)
+    user = await session.scalar(select(User).where(User.display_name == "Аня"))
+    response = await client.post(f"/u/{user.id}/name", data={"display_name": "   "})
+    assert "не может быть пустым" in response.text
+    await session.refresh(user)
+    assert user.display_name == "Аня"
+
+
+async def test_duplicate_name_rejected(session, client):
+    await _login(client, "Кирилл", teacher=True)
+    await client.post("/logout")
+    await _login(client, "Аня")
+    anya = await session.scalar(select(User).where(User.display_name == "Аня"))
+
+    response = await client.post(f"/u/{anya.id}/name", data={"display_name": "кирилл"})
+    assert "уже занято" in response.text
+    await session.refresh(anya)
+    assert anya.display_name == "Аня"
+
+
+async def test_student_cannot_rename_someone_else(session, client):
+    await _login(client, "Кирилл", teacher=True)
+    await client.post("/logout")
+    await _login(client, "Аня")
+    await client.post("/logout")
+    await _login(client, "Боря")
+
+    anya = await session.scalar(select(User).where(User.display_name == "Аня"))
+    response = await client.post(f"/u/{anya.id}/name", data={"display_name": "Взломано"})
+    assert "Чужое имя менять нельзя" in response.text
+    await session.refresh(anya)
+    assert anya.display_name == "Аня"
+
+
+async def test_teacher_renames_student(session, client):
+    await _login(client, "Кирилл", teacher=True)
+    await client.post("/logout")
+    await _login(client, "kira_2007")
+    await client.post("/logout")
+    await _login(client, "Кирилл")
+
+    student = await session.scalar(select(User).where(User.display_name == "kira_2007"))
+    response = await client.post(f"/u/{student.id}/name", data={"display_name": "Кира Соколова"})
+    assert "Имя изменено" in response.text
+    await session.refresh(student)
+    assert student.display_name == "Кира Соколова"
+
+
+async def test_rename_form_hidden_from_outsiders(session, client):
+    await _login(client, "Кирилл", teacher=True)
+    await client.post("/logout")
+    await _login(client, "Аня")
+    await client.post("/logout")
+    await _login(client, "Боря")
+
+    anya = await session.scalar(select(User).where(User.display_name == "Аня"))
+    page = await client.get(f"/u/{anya.id}")
+    assert f'action="/u/{anya.id}/name"' not in page.text

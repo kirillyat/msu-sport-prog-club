@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
-from app.models import Announcement, Group, GroupMembership, User
+from app.models import Announcement, Group, User
 
 
 async def _login(client, name, teacher=False):
@@ -61,10 +61,11 @@ async def test_ticker_respects_group_visibility(session, client):
     group = Group(title="Чужая", join_code="ZZZ999")
     session.add(group)
     await session.commit()
-    session.add(GroupMembership(group_id=group.id, user_id=vova.id + 1000))  # никого из наших
+    # Вова в эту группу не входит, поэтому её объявление до него дойти не должно.
     session.add(Announcement(title="Не для Вовы", group_id=group.id,
                              starts_at=datetime.now(UTC) + timedelta(days=1)))
     await session.commit()
+    assert vova.id is not None
 
     page = await client.get("/")
     assert 'class="ticker"' not in page.text
