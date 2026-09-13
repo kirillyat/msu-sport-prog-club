@@ -470,3 +470,32 @@ async def test_filters_accept_the_all_option(session, client):
     for path in ("/leaderboard?group_id=&period=all", "/feed?group_id="):
         response = await client.get(path)
         assert response.status_code == 200, path
+
+
+async def test_bonus_form_survives_clumsy_input(session, client):
+    """Пустое поле и запятая — обычный ввод, а не 422 с сырым JSON."""
+    from app.models import BonusPoint
+
+    await _login(client, "Кирилл", teacher=True)
+    student = User(display_name="Аня")
+    session.add(student)
+    await session.commit()
+
+    empty = await client.post(f"/teacher/students/{student.id}/bonus",
+                              data={"points": "", "reason": "за что"})
+    assert "это число" in empty.text
+
+    comma = await client.post(f"/teacher/students/{student.id}/bonus",
+                              data={"points": "2,5", "reason": ""})
+    assert "Баллы начислены" in comma.text
+    row = await session.scalar(select(BonusPoint))
+    assert row.points == 2.5
+    assert row.reason == "без комментария"   # не «без+комментария» из адресной строки
+
+
+async def test_bad_parameter_shows_a_page_not_json(session, client):
+    await _login(client, "Аня")
+    response = await client.get("/u/не-число")
+    assert response.status_code == 400
+    assert "Не получилось" in response.text
+    assert "detail" not in response.text

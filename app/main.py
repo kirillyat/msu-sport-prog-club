@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator
 from urllib.parse import quote
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -108,6 +109,27 @@ async def _redirect_to_login(request: Request, exc: RedirectToLogin):
 async def _forbidden(request: Request, exc: Forbidden):
     return templates.TemplateResponse(
         request, "error.html", {"user": exc.user, "message": exc.message}, status_code=403
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def _bad_request(request: Request, exc: RequestValidationError):
+    """Сырой JSON от FastAPI в браузере выглядит как поломка сайта.
+
+    Показываем обычную страницу, а подробности пишем в лог: пользователю
+    они всё равно ничего не говорят.
+    """
+    logger.warning("Неверный запрос %s: %s", request.url, exc.errors())
+    return templates.TemplateResponse(
+        request,
+        "error.html",
+        {
+            "user": getattr(request.state, "user", None),
+            "title": "Не получилось",
+            "message": "Страница получила значение, которого не ждала. "
+                       "Вернись на главную и попробуй ещё раз.",
+        },
+        status_code=400,
     )
 
 

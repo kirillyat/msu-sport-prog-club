@@ -633,17 +633,25 @@ async def grant_bonus(
     session: SessionDep,
     user: TeacherUser,
     user_id: int,
-    points: float = Form(...),
-    reason: str = Form(...),
+    points: str = Form(""),
+    reason: str = Form(""),
 ):
+    """Баллы приходят строкой: пустое поле и запятая в дробной части —
+    обычный ввод, а не повод показать страницу с ошибкой."""
     target = await session.get(User, user_id)
     if target is None:
         return _redirect("/teacher/students", error="Студент+не+найден")
+    try:
+        amount = float(points.strip().replace(",", "."))
+    except ValueError:
+        return _redirect("/teacher/students", error="Баллы+—+это+число")
+    if amount == 0:
+        return _redirect("/teacher/students", error="Ноль+баллов+начислять+нечего")
     session.add(
         BonusPoint(
             user_id=user_id,
-            points=points,
-            reason=reason.strip() or "без+комментария",
+            points=amount,
+            reason=reason.strip() or "без комментария",
             granted_by_id=user.id,
             granted_at=utcnow(),
         )
