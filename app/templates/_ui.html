@@ -9,3 +9,17 @@
   {% if href and label %}<a class="btn ghost small" href="{{ href }}">{{ label }}</a>{% endif %}
 </div>
 {%- endmacro %}
+
+{#
+  Аватарка. Инициалы лежат под картинкой: если Gravatar отвечает 404
+  (почты нет в их базе), onerror убирает <img> и остаются инициалы.
+#}
+{% macro avatar(person, size="") -%}
+<span class="avatar {{ size }}" style="--h: {{ person.display_name | hue }}"
+      {% if person.display_name %}title="{{ person.display_name }}"{% endif %}>
+  {%- if person.gravatar_email -%}
+  <img src="{{ person.gravatar_email | gravatar }}" alt="" loading="lazy"
+       referrerpolicy="no-referrer" onerror="this.remove()">
+  {%- endif -%}
+  {{ person.display_name | initials }}</span>
+{%- endmacro %}

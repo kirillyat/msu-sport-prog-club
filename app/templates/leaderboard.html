@@ -63,7 +63,7 @@
         </td>
         <td>
           <span class="row" style="gap:9px; flex-wrap:nowrap">
-            <span class="avatar sm" style="--h: {{ row.user.display_name | hue }}">{{ row.user.display_name | initials }}</span>
+            {{ avatar(row.user, "sm") }}
             <a href="/u/{{ row.user.id }}">{{ row.user.display_name }}</a>
           </span>
         </td>

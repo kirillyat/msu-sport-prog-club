@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -75,10 +76,11 @@ def plural_ru(count: int, one: str, few: str, many: str) -> str:
     return many
 
 
-def timeago(value: datetime | None) -> str:
+def timeago(value: datetime | None, now: datetime | None = None) -> str:
+    """`now` подставляется в тестах: иначе результат зависит от часа запуска."""
     if value is None:
         return "—"
-    now = datetime.now(UTC)
+    now = now or datetime.now(UTC)
     seconds = (now - value).total_seconds()
 
     if seconds < 0:
@@ -93,7 +95,7 @@ def timeago(value: datetime | None) -> str:
         return f"{hours} {plural_ru(hours, 'час', 'часа', 'часов')} назад"
 
     local = value.astimezone(LOCAL_TZ)
-    today = datetime.now(LOCAL_TZ).date()
+    today = now.astimezone(LOCAL_TZ).date()
     days = (today - local.date()).days
     if days == 1:
         return f"вчера в {local:%H:%M}"
@@ -111,6 +113,23 @@ def initials(name: str | None) -> str:
     if not parts:
         return "?"
     return "".join(p[0] for p in parts[:2]).upper()
+
+
+GRAVATAR_BASE = "https://gravatar.com/avatar/"
+
+
+def gravatar_url(email: str | None, size: int = 128) -> str | None:
+    """Ссылка на Gravatar или None, если почта не указана.
+
+    Хеш считается от почты в нижнем регистре без пробелов по краям — так велит
+    Gravatar. `d=404` означает «нет картинки — отдай 404»: тогда шаблон покажет
+    инициалы вместо чужой заглушки. `r=g` отсекает картинки не для всех.
+    """
+    clean = (email or "").strip().lower()
+    if not clean:
+        return None
+    digest = hashlib.sha256(clean.encode()).hexdigest()
+    return f"{GRAVATAR_BASE}{digest}?s={size}&d=404&r=g"
 
 
 def avatar_hue(value: object) -> int:
@@ -178,9 +197,11 @@ templates.env.filters["ago"] = timeago
 templates.env.filters["initials"] = initials
 templates.env.filters["hue"] = avatar_hue
 templates.env.filters["plural"] = plural_ru
+templates.env.filters["gravatar"] = gravatar_url
 # Макрос иконок доступен во всех шаблонах без ручного import — спрайт
 # при этом выводится один раз через {% include "_icons.html" %} в base.html.
 templates.env.globals["icon"] = templates.env.get_template("_icons.html").module.icon
+templates.env.globals["avatar"] = templates.env.get_template("_ui.html").module.avatar
 templates.env.globals["group_by_day"] = group_by_day
 templates.env.globals["asset_version"] = asset_version()
 templates.env.globals["brand_logo"] = _find_asset(LOGO_NAMES)

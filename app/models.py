@@ -116,6 +116,10 @@ class User(Base):
     oidc_sub: Mapped[str | None] = mapped_column(String(255), unique=True, index=True)
     email: Mapped[str | None] = mapped_column(String(255))
 
+    # Почта для Gravatar — отдельно от рабочей: аватарка часто заведена на личную.
+    # Пусто — аватарки нет, рисуем инициалы и наружу ничего не ходит.
+    gravatar_email: Mapped[str | None] = mapped_column(String(255))
+
     accounts: Mapped[list[PlatformAccount]] = relationship(
         back_populates="user", cascade="all, delete-orphan", lazy="selectin"
     )

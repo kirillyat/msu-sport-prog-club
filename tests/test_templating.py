@@ -25,19 +25,22 @@ def test_russian_plurals(count, expected):
 
 
 def test_timeago_scales():
-    now = datetime.now(UTC)
-    assert timeago(now - timedelta(seconds=10)) == "только что"
-    assert timeago(now - timedelta(minutes=1)) == "1 минуту назад"
-    assert timeago(now - timedelta(minutes=5)) == "5 минут назад"
-    assert timeago(now - timedelta(hours=2)) == "2 часа назад"
-    assert timeago(now - timedelta(hours=5)) == "5 часов назад"
+    # Полдень по местному времени: иначе «5 часов назад» у границы суток
+    # превращается во «вчера», и тест зависит от часа запуска.
+    now = datetime.now(LOCAL_TZ).replace(hour=12, minute=0).astimezone(UTC)
+    assert timeago(now - timedelta(seconds=10), now) == "только что"
+    assert timeago(now - timedelta(minutes=1), now) == "1 минуту назад"
+    assert timeago(now - timedelta(minutes=5), now) == "5 минут назад"
+    assert timeago(now - timedelta(hours=2), now) == "2 часа назад"
+    assert timeago(now - timedelta(hours=5), now) == "5 часов назад"
     assert timeago(None) == "—"
 
 
 def test_timeago_yesterday_uses_local_day():
-    # Берём полдень по местному времени, чтобы тест не ломался у границы суток.
-    yesterday_noon = (datetime.now(LOCAL_TZ) - timedelta(days=1)).replace(hour=12, minute=30)
-    assert timeago(yesterday_noon.astimezone(UTC)).startswith("вчера в ")
+    # Вечер минус сутки с небольшим: и «вчера» по календарю, и больше 24 часов.
+    now = datetime.now(LOCAL_TZ).replace(hour=20, minute=0)
+    yesterday = now.replace(hour=12, minute=30) - timedelta(days=1)
+    assert timeago(yesterday.astimezone(UTC), now.astimezone(UTC)) == "вчера в 12:30"
 
 
 @pytest.mark.parametrize(

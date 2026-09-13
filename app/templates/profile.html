@@ -14,27 +14,41 @@
 
 {% block content %}
 <div class="profile-head">
-  <span class="avatar lg" style="--h: {{ target.display_name | hue }}">{{ target.display_name | initials }}</span>
+  {{ avatar(target, "lg") }}
   <div style="min-width:0; flex:1">
     <p class="eyebrow">участник #{{ "%04d" % target.id }}</p>
     <h1 style="margin-bottom:4px">
       {{ target.display_name }}
       {% if can_rename %}
-      <button class="rename-toggle" type="button" title="Изменить имя"
-              onclick="document.getElementById('rename').toggleAttribute('hidden');
+      <button class="rename-toggle" type="button" title="Изменить профиль"
+              onclick="document.getElementById('edit-box').toggleAttribute('hidden');
                        document.getElementById('rename-input').focus()">{{ icon("edit") }}</button>
       {% endif %}
     </h1>
     {% if can_rename %}
-    <form method="post" action="/u/{{ target.id }}/name" class="inline-form" id="rename" hidden
-          style="margin:10px 0 12px">
-      <div class="field" style="min-width:220px">
-        <label for="rename-input">Имя</label>
-        <input type="text" id="rename-input" name="display_name" maxlength="120"
-               value="{{ target.display_name }}" autocomplete="off" required>
-      </div>
-      <button type="submit">{{ icon("check") }} Сохранить</button>
-    </form>
+    <div id="edit-box" hidden style="margin:10px 0 12px">
+      <form method="post" action="/u/{{ target.id }}/name" class="inline-form">
+        <div class="field" style="min-width:220px">
+          <label for="rename-input">Имя</label>
+          <input type="text" id="rename-input" name="display_name" maxlength="120"
+                 value="{{ target.display_name }}" autocomplete="off" required>
+        </div>
+        <button type="submit">{{ icon("check") }} Сохранить</button>
+      </form>
+      {% if is_self %}
+      <form method="post" action="/u/{{ target.id }}/gravatar" class="inline-form"
+            style="margin-top:8px">
+        <div class="field" style="min-width:260px">
+          <label for="gravatar-input">Почта на Gravatar</label>
+          <input type="email" id="gravatar-input" name="gravatar_email" maxlength="255"
+                 value="{{ target.gravatar_email or "" }}" placeholder="пусто — инициалы"
+                 autocomplete="email">
+        </div>
+        <button type="submit">{{ icon("check") }} Сохранить</button>
+        <span class="small muted">Аватарка берётся с gravatar.com по этой почте.</span>
+      </form>
+      {% endif %}
+    </div>
     {% endif %}
     <div class="row small muted">
       {% if target.telegram_username %}<span>@{{ target.telegram_username }}</span>{% endif %}

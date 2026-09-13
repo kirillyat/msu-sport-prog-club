@@ -63,7 +63,7 @@
   <nav class="nav">{{ navitems() }}</nav>
   <div class="rail-foot">
     <a class="whoami" href="/me" title="{{ user.display_name }} — профиль">
-      <span class="avatar" style="--h: {{ user.display_name | hue }}">{{ user.display_name | initials }}</span>
+      {{ avatar(user) }}
     </a>
     <button class="rail-btn" type="button" data-theme-toggle data-theme-state="light"
               title="Тема: светлая">

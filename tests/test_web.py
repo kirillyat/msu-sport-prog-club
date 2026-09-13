@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import hashlib
+
 import httpx
 from sqlalchemy import select
 
 from app.models import Group, Platform, Problem, Role, User
+from app.templating import gravatar_url
 
 
 async def _login(client: httpx.AsyncClient, name: str, teacher: bool = False):
@@ -371,3 +374,44 @@ async def test_only_title_and_description_are_editable(session, client):
     assert item.description == "Разбор в понедельник"
     assert item.deadline == deadline_before
     assert item.points_per_problem == points_before
+
+
+async def test_gravatar_url_is_sha256_of_trimmed_lowercased_email():
+    url = gravatar_url("  Kirill@Example.COM ")
+    # Хеш считается от "kirill@example.com": регистр и пробелы Gravatar не прощает.
+    digest = hashlib.sha256(b"kirill@example.com").hexdigest()
+    assert url == f"https://gravatar.com/avatar/{digest}?s=128&d=404&r=g"
+    assert gravatar_url("") is None
+    assert gravatar_url(None) is None
+
+
+async def test_student_sets_and_clears_own_gravatar(session, client):
+    await _login(client, "Аня")
+    user = await session.scalar(select(User).where(User.display_name == "Аня"))
+
+    await client.post(f"/u/{user.id}/gravatar", data={"gravatar_email": " Me@Example.com "})
+    await session.refresh(user)
+    assert user.gravatar_email == "Me@Example.com"
+    assert "gravatar.com/avatar/" in (await client.get("/me")).text
+
+    await client.post(f"/u/{user.id}/gravatar", data={"gravatar_email": ""})
+    await session.refresh(user)
+    assert user.gravatar_email is None
+    assert "gravatar.com/avatar/" not in (await client.get("/me")).text
+
+
+async def test_gravatar_rejects_junk_and_other_people(session, client):
+    await _login(client, "Аня")
+    user = await session.scalar(select(User).where(User.display_name == "Аня"))
+    other = User(display_name="Чужой")
+    session.add(other)
+    await session.commit()
+
+    await client.post(f"/u/{user.id}/gravatar", data={"gravatar_email": "не почта"})
+    await session.refresh(user)
+    assert user.gravatar_email is None
+
+    # Преподаватель тоже не трогает чужую почту: аватарка — дело личное.
+    await client.post(f"/u/{other.id}/gravatar", data={"gravatar_email": "me@example.com"})
+    await session.refresh(other)
+    assert other.gravatar_email is None

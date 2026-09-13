@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from urllib.parse import quote
 
 from fastapi import APIRouter, Form, Request
@@ -189,6 +190,8 @@ async def sync_profile(session: SessionDep, user: CurrentUser, user_id: int):
 
 
 MAX_NAME = 120
+MAX_EMAIL = 255
+EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 
 
 @router.post("/u/{user_id}/name")
@@ -227,6 +230,28 @@ async def rename_user(
     target.display_name = name
     await session.commit()
     return RedirectResponse(f"{back}?ok=" + quote("Имя изменено"), status_code=303)
+
+
+@router.post("/u/{user_id}/gravatar")
+async def set_gravatar(
+    session: SessionDep, user: CurrentUser, user_id: int, gravatar_email: str = Form("")
+):
+    """Почта для аватарки — дело личное: чужую не меняет даже преподаватель."""
+    if user_id != user.id:
+        return RedirectResponse(f"/u/{user_id}?err=" + quote("Чужая почта"), status_code=303)
+
+    email = gravatar_email.strip()
+    if len(email) > MAX_EMAIL:
+        return RedirectResponse(
+            "/me?err=" + quote(f"Не длиннее {MAX_EMAIL} символов"), status_code=303
+        )
+    if email and not EMAIL_RE.fullmatch(email):
+        return RedirectResponse("/me?err=" + quote("Не похоже на почту"), status_code=303)
+
+    user.gravatar_email = email or None
+    await session.commit()
+    word = "Аватарка обновится" if email else "Аватарка отключена"
+    return RedirectResponse("/me?ok=" + quote(word), status_code=303)
 
 
 @router.post("/groups/join")

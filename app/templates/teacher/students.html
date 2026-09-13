@@ -16,7 +16,7 @@
       <tr>
         <td>
           <span class="row" style="gap:9px; flex-wrap:nowrap">
-            <span class="avatar sm" style="--h: {{ student.display_name | hue }}">{{ student.display_name | initials }}</span>
+            {{ avatar(student, "sm") }}
             <span>
               <a href="/u/{{ student.id }}">{{ student.display_name }}</a>
               {% if student.telegram_username %}<br><span class="small muted">@{{ student.telegram_username }}</span>{% endif %}

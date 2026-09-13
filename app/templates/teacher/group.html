@@ -37,7 +37,7 @@
       <tr>
         <td>
           <span class="row" style="gap:9px; flex-wrap:nowrap">
-            <span class="avatar sm" style="--h: {{ member.display_name | hue }}">{{ member.display_name | initials }}</span>
+            {{ avatar(member, "sm") }}
             <a href="/u/{{ member.id }}">{{ member.display_name }}</a>
           </span>
         </td>

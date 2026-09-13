@@ -8,8 +8,7 @@
     {% if show_day %}<div class="feed-day">{{ label }}</div>{% endif %}
     {% for item in chunk %}
     <div class="feed-item">
-      <span class="avatar" style="--h: {{ item.user.display_name | hue }}"
-            title="{{ item.user.display_name }}">{{ item.user.display_name | initials }}</span>
+      {{ avatar(item.user) }}
       <div class="feed-body">
         <div class="feed-head">
           <a class="who" href="/u/{{ item.user.id }}">{{ item.user.display_name }}</a>
