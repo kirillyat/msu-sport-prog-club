@@ -461,3 +461,12 @@ async def test_leaderboard_shows_podium_and_first_solver(session, client):
 
     page = (await client.get("/teacher/assignments/1")).text
     assert "Первым" in page and "Аня" in page
+
+
+async def test_filters_accept_the_all_option(session, client):
+    """Пустой group_id из <select> — это «все». Раньше страница падала с 422."""
+    await _login(client, "Аня")
+
+    for path in ("/leaderboard?group_id=&period=all", "/feed?group_id="):
+        response = await client.get(path)
+        assert response.status_code == 200, path

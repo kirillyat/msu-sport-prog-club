@@ -5,7 +5,7 @@ from datetime import timedelta
 from fastapi import APIRouter, Request
 from sqlalchemy import select
 
-from app.deps import CurrentUser, SessionDep
+from app.deps import CurrentUser, OptionalInt, SessionDep
 from app.models import Group, utcnow
 from app.services.leaderboard import build_leaderboard
 from app.services.progress import groups_for_user
@@ -25,7 +25,7 @@ async def leaderboard_page(
     request: Request,
     session: SessionDep,
     user: CurrentUser,
-    group_id: int | None = None,
+    group_id: OptionalInt = None,
     period: str = "all",
 ):
     if period not in PERIODS:

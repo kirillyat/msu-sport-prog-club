@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import Depends, Request
+from pydantic import BeforeValidator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -11,6 +12,16 @@ from app.models import Role, User
 from app.security import read_session
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
+
+
+def _blank_to_none(value: object) -> object:
+    """Пустая строка из <select> — это «все», а не число."""
+    return None if value in ("", None) else value
+
+
+# Необязательный числовой параметр в GET-форме. Без этого выбор «Все»
+# в фильтре роняет страницу с ошибкой разбора целого.
+OptionalInt = Annotated[int | None, BeforeValidator(_blank_to_none)]
 
 
 class RedirectToLogin(Exception):
