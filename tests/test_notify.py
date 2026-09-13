@@ -7,18 +7,19 @@ from sqlalchemy import select
 
 from app import notify
 from app.config import settings
-from app.models import Announcement, Assignment, Group, ProblemSet
+from app.models import Announcement, Assignment, Group, GroupMembership, ProblemSet, User
 
 
 @pytest.fixture
 def outbox(monkeypatch):
     sent: list[tuple[str, str]] = []
 
-    async def fake_send(chat_id, text):
-        sent.append((str(chat_id), text))
-        return True
+    async def fake_send_many(chat_ids, text):
+        ids = [str(c) for c in chat_ids]
+        sent.extend((c, text) for c in ids)
+        return len(ids)
 
-    monkeypatch.setattr(notify, "send", fake_send)
+    monkeypatch.setattr(notify, "send_many", fake_send_many)
     monkeypatch.setattr(settings, "telegram_notify_chat_id", "-100777")
     return sent
 
@@ -45,7 +46,7 @@ async def test_announcement_goes_to_group_chat_when_set(session, outbox):
     await session.commit()
     await session.refresh(item)
 
-    assert await notify.notify_announcement(item, session) is True
+    assert await notify.notify_announcement(item, session) == 1
     assert outbox[0][0] == "-100555"
 
 
@@ -54,18 +55,67 @@ async def test_announcement_falls_back_to_club_chat(session, outbox):
     session.add(item)
     await session.commit()
     await session.refresh(item)
-    assert await notify.notify_announcement(item) is True
+    assert await notify.notify_announcement(item) == 1
     assert outbox[0][0] == "-100777"
 
 
-async def test_nothing_sent_without_any_chat(session, outbox, monkeypatch):
+async def test_nothing_sent_when_there_is_nobody_to_write_to(session, outbox, monkeypatch):
     monkeypatch.setattr(settings, "telegram_notify_chat_id", "")
     item = Announcement(title="Тихо")
     session.add(item)
     await session.commit()
     await session.refresh(item)
-    assert await notify.notify_announcement(item) is False
+    assert await notify.notify_announcement(item, session) == 0
     assert outbox == []
+
+
+async def test_without_chat_bot_writes_to_everyone_personally(session, outbox, monkeypatch):
+    monkeypatch.setattr(settings, "telegram_notify_chat_id", "")
+    session.add_all([
+        User(display_name="Аня", telegram_id=11),
+        User(display_name="Боря", telegram_id=22),
+        User(display_name="Вика"),  # входил только через Authentik — писать некуда
+        User(display_name="Гена", telegram_id=44, is_active=False),
+    ])
+    item = Announcement(title="Всем лично")
+    session.add(item)
+    await session.commit()
+    await session.refresh(item)
+
+    assert await notify.notify_announcement(item, session) == 2
+    assert {chat for chat, _ in outbox} == {"11", "22"}
+
+
+async def test_group_announcement_reaches_only_its_members(session, outbox, monkeypatch):
+    monkeypatch.setattr(settings, "telegram_notify_chat_id", "")
+    group = Group(title="А", join_code="AAA111")
+    inside = User(display_name="Свой", telegram_id=11)
+    outside = User(display_name="Чужой", telegram_id=22)
+    session.add_all([group, inside, outside])
+    await session.commit()
+    session.add(GroupMembership(group_id=group.id, user_id=inside.id))
+    item = Announcement(title="Только группе", group_id=group.id)
+    session.add(item)
+    await session.commit()
+    await session.refresh(item)
+
+    assert await notify.notify_announcement(item, session) == 1
+    assert outbox[0][0] == "11"
+
+
+async def test_personal_assignment_never_goes_to_the_club_chat(session, outbox):
+    student = User(display_name="Один", telegram_id=11)
+    other = User(display_name="Другой", telegram_id=22)
+    problem_set = ProblemSet(title="Набор")
+    session.add_all([student, other, problem_set])
+    await session.commit()
+    item = Assignment(title="Лично", problem_set_id=problem_set.id, user_id=student.id)
+    session.add(item)
+    await session.commit()
+    await session.refresh(item)
+
+    assert await notify.notify_assignment(item, 3, session) == 1
+    assert outbox[0][0] == "11"
 
 
 async def test_reminders_only_inside_window_and_once(session, outbox, monkeypatch):

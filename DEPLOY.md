@@ -32,10 +32,10 @@ HTTPS обязателен: без него не работает вход че�
 
 | Переменная | Что это | Где взять |
 |---|---|---|
-| `BASE_URL` | внешний адрес, обязательно `https://` | согласовать домен |
+| `BASE_URL` | внешний адрес портала, обязательно `https://` | заполняет admin, когда домен известен; тот же адрес идёт в Redirect URI |
 | `TELEGRAM_BOT_TOKEN` | токен бота | @BotFather, даёт Кирилл |
 | `TELEGRAM_BOT_USERNAME` | имя бота без `@` | там же |
-| `TELEGRAM_NOTIFY_CHAT_ID` | чат клуба для уведомлений | даёт Кирилл |
+| `TELEGRAM_NOTIFY_CHAT_ID` | необязательно: общий чат клуба. Пусто — бот пишет каждому лично | даёт Кирилл, если чат появится |
 | `TEACHER_TELEGRAM_IDS` | telegram id преподавателей через запятую | даёт Кирилл |
 | `OIDC_ISSUER` | адрес провайдера Authentik | админ Authentik, см. раздел 3 |
 | `OIDC_CLIENT_ID` | идентификатор приложения | админ Authentik |
@@ -223,7 +223,7 @@ docker compose cp web:/data/backup.db /var/backups/sport-$(date +%F).db
 | Вход через Authentik не предлагается | пустой `OIDC_ISSUER` или `OIDC_CLIENT_ID` |
 | `401` от Authentik после входа | Redirect URI в Authentik не совпадает с `<BASE_URL>/login/oidc/callback` |
 | Решения студентов не подтягиваются | нет исходящего доступа к `codeforces.com` / `leetcode.com`, либо аккаунт не подтверждён студентом |
-| Уведомления не приходят | пустой `TELEGRAM_NOTIFY_CHAT_ID`, либо бот не добавлен в чат |
+| Уведомления не приходят | пустой `TELEGRAM_BOT_TOKEN`; либо чат задан, но бот в него не добавлен; либо адресат не входил через бота |
 
 Логи: `docker compose logs -f web`. Ошибки синхронизации видны и в интерфейсе —
 на странице «Аккаунты» у студента.
