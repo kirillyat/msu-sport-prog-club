@@ -26,7 +26,8 @@
       {% endif %}
     </h1>
     {% if can_rename %}
-    <form method="post" action="/u/{{ target.id }}/name" class="inline-form" id="rename" hidden>
+    <form method="post" action="/u/{{ target.id }}/name" class="inline-form" id="rename" hidden
+          style="margin:10px 0 12px">
       <div class="field" style="min-width:220px">
         <label for="rename-input">Имя</label>
         <input type="text" id="rename-input" name="display_name" maxlength="120"
