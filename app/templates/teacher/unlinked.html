@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "_ui.html" import empty %}
+{% block title %}Задачи вне каталога — {{ settings.app_name }}{% endblock %}
+{% block content %}
+<h1>Задачи вне каталога</h1>
+<p class="sub">
+  Посылки по задачам, которых нет в нашем каталоге — обычно это свежие контесты.
+  Обнови каталог на <a href="/teacher">панели</a>, и они подвяжутся автоматически.
+</p>
+{% if rows %}
+<div class="card table-wrap" style="padding:6px">
+  <table>
+    <thead><tr><th>Платформа</th><th>Слаг</th><th>Название</th><th>Посылок</th></tr></thead>
+    <tbody>
+    {% for platform, slug, title, count in rows %}
+      <tr>
+        <td class="small muted">{{ platform.title }}</td>
+        <td><span class="badge mono">{{ slug or "—" }}</span></td>
+        <td>{{ title or "—" }}</td>
+        <td class="num">{{ count }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card">{{ empty("check", "Все посылки привязаны к задачам каталога.") }}</div>
+{% endif %}
+{% endblock %}

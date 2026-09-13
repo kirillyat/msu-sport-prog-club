@@ -1,0 +1,48 @@
+{#
+  Лента решений. Подключается и на отдельной странице, и врезкой
+  на главной и на странице группы.
+#}
+{% macro feed_list(items, show_day=True) -%}
+<div class="feed">
+  {% for label, chunk in group_by_day(items) %}
+    {% if show_day %}<div class="feed-day">{{ label }}</div>{% endif %}
+    {% for item in chunk %}
+    <div class="feed-item">
+      <span class="avatar" style="--h: {{ item.user.display_name | hue }}"
+            title="{{ item.user.display_name }}">{{ item.user.display_name | initials }}</span>
+      <div class="feed-body">
+        <div class="feed-head">
+          <a class="who" href="/u/{{ item.user.id }}">{{ item.user.display_name }}</a>
+          <span class="when" title="{{ item.solved_at | dt }}">{{ item.solved_at | ago }}</span>
+        </div>
+        <div class="feed-what">
+          <span class="tick">{{ icon("check") }}</span>
+          <span class="title-wrap">
+            {% if item.url %}
+              <a class="title" href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a>
+            {% else %}
+              <span class="title">{{ item.title }}</span>
+            {% endif %}
+          </span>
+        </div>
+        <div class="feed-meta">
+          <span class="badge">{{ icon("code") }}{{ item.platform.title }}</span>
+          {% set d = item.difficulty_badge %}
+          {% if d %}<span class="badge {{ d[1] }}">{{ d[0] }}</span>{% endif %}
+          {% if item.assignment %}
+            <a class="badge info" href="/assignments/{{ item.assignment.id }}">
+              {{ icon("tasks") }}{{ item.assignment.title }}
+            </a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty">
+      {{ icon("activity", "xl") }}
+      <div>Пока тихо. Как только кто-нибудь из группы решит задачу, она появится здесь.</div>
+    </div>
+  {% endfor %}
+</div>
+{%- endmacro %}

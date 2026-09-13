@@ -1,0 +1,86 @@
+from __future__ import annotations
+
+from functools import lru_cache
+from pathlib import Path
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Значение из .env.example. Стартовать с ним в проде нельзя: подпись сессионных
+# кук предсказуема, и любой может войти под чужим аккаунтом.
+INSECURE_SECRET = "dev-insecure-change-me"
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    app_name: str = "Клуб спортивного программирования ФИИ МГУ"
+    app_short_name: str = "СП ФИИ МГУ"
+    display_timezone: str = "Europe/Moscow"
+    base_url: str = "http://localhost:8000"
+    secret_key: str = INSECURE_SECRET
+    # Осознанное разрешение работать с дефолтным ключом (тесты, разовая проверка).
+    allow_insecure_secret: bool = False
+    data_dir: Path = Path("./data")
+
+    # Telegram
+    telegram_bot_token: str = ""
+    telegram_bot_username: str = ""
+    teacher_telegram_ids: str = ""
+
+    # Локальная разработка без Telegram.
+    dev_login_enabled: bool = False
+
+    # Фоновые задачи
+    enable_scheduler: bool = True
+    enable_bot: bool = True
+    sync_interval_seconds: int = 600
+    sync_stale_seconds: int = 540
+    catalog_refresh_hours: int = 24
+
+    # Клиенты платформ
+    codeforces_min_interval: float = 2.1
+    leetcode_min_interval: float = 1.0
+    leetcode_user_agent: str = (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    )
+    http_timeout: float = 30.0
+
+    # Сессии и коды
+    login_code_ttl_seconds: int = 600
+    session_ttl_seconds: int = 60 * 60 * 24 * 30
+    session_cookie: str = "sport_session"
+
+    @property
+    def secret_is_insecure(self) -> bool:
+        return self.secret_key.strip() in {"", INSECURE_SECRET}
+
+    @property
+    def database_url(self) -> str:
+        return f"sqlite+aiosqlite:///{self.data_dir.resolve() / 'sport.db'}"
+
+    @property
+    def teacher_ids(self) -> set[int]:
+        out: set[int] = set()
+        for chunk in self.teacher_telegram_ids.replace(";", ",").split(","):
+            chunk = chunk.strip()
+            if chunk:
+                try:
+                    out.add(int(chunk))
+                except ValueError:
+                    continue
+        return out
+
+    @property
+    def telegram_login_url_template(self) -> str:
+        return f"https://t.me/{self.telegram_bot_username}?start={{code}}"
+
+
+@lru_cache
+def get_settings() -> Settings:
+    settings = Settings()
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    return settings
+
+
+settings = get_settings()

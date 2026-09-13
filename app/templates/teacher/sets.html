@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "_ui.html" import empty %}
+{% block title %}Списки задач — {{ settings.app_name }}{% endblock %}
+{% block content %}
+<h1>Списки задач</h1>
+<p class="sub">Подборка задач, которую потом можно выдать как задание или использовать в ивенте.</p>
+
+<div class="card">
+  <h3>{{ icon("plus") }} Новый список</h3>
+  <form method="post" action="/teacher/sets">
+    <div class="grid two">
+      <div class="field">
+        <label for="title">Название</label>
+        <input type="text" id="title" name="title" placeholder="Бинарный поиск, базовый" required>
+      </div>
+      <div class="field">
+        <label for="description">Описание (необязательно)</label>
+        <input type="text" id="description" name="description">
+      </div>
+    </div>
+    <div class="field">
+      <label for="problems_text">Задачи — по одной в строке</label>
+      <textarea id="problems_text" name="problems_text" placeholder="two-sum&#10;lc:binary-search&#10;cf:1352G&#10;474B"></textarea>
+    </div>
+    <p class="small muted">
+      {{ icon("search") }} Понимаются ссылки, слаги LeetCode и коды Codeforces вида
+      <span class="mono">1352G</span>. Задача должна быть в каталоге — если нет,
+      обнови его на <a href="/teacher">панели</a>.
+    </p>
+    <button type="submit">{{ icon("plus") }} Создать</button>
+  </form>
+</div>
+
+{% if sets %}
+<div class="card table-wrap" style="padding:6px">
+  <table>
+    <thead><tr><th>Список</th><th>Задач</th><th>Создан</th></tr></thead>
+    <tbody>
+    {% for item in sets %}
+      <tr>
+        <td><a href="/teacher/sets/{{ item.id }}">{{ item.title }}</a>
+          {% if item.description %}<br><span class="small muted">{{ item.description }}</span>{% endif %}</td>
+        <td class="num">{{ item.items | length }}</td>
+        <td class="small muted">{{ item.created_at | ago }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card">{{ empty("layers", "Списков пока нет — собери первый в форме выше.") }}</div>
+{% endif %}
+{% endblock %}

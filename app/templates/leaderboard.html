@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% from "_ui.html" import empty %}
+{% block title %}Лидерборд — {{ settings.app_name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Лидерборд</h1>
+    <p class="sub" style="margin-bottom:8px">
+      {% if my_place and rows | length > 1 %}Твоё место — <strong>{{ my_place }}</strong> из {{ rows | length }}.{% endif %}
+      Баллы начисляются за задачи из заданий и клубных ивентов.
+    </p>
+    <details class="formula">
+      <summary>Как считаются баллы</summary>
+      <ul>
+        <li>LeetCode: Easy — 1, Medium — 3, Hard — 5 баллов.</li>
+        <li>Codeforces: рейтинг задачи делится на 200 (задача 1600 → 8 баллов).</li>
+        <li>Решено после дедлайна — половина баллов.</li>
+        <li>Первым в группе решил задачу — плюс 2.</li>
+        <li>Закрыл всё задание целиком — плюс 5.</li>
+        <li>Задачи, решённые до выдачи задания, не засчитываются.</li>
+      </ul>
+    </details>
+  </div>
+  <form method="get" action="/leaderboard" class="inline-form">
+    <div class="field">
+      <label for="group_id">Группа</label>
+      <select id="group_id" name="group_id" onchange="this.form.submit()">
+        <option value="">Все</option>
+        {% for group in groups %}
+        <option value="{{ group.id }}" {% if group_id == group.id %}selected{% endif %}>{{ group.title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="period">Период</label>
+      <select id="period" name="period" onchange="this.form.submit()">
+        {% for key, item in periods.items() %}
+        <option value="{{ key }}" {% if period == key %}selected{% endif %}>{{ item[0] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </form>
+</div>
+
+{% if rows %}
+{# Медали при двух участниках выглядят нелепо — показываем от трёх. #}
+{% set show_medals = rows | length >= 3 %}
+<div class="card table-wrap" style="padding:6px">
+  <table>
+    <thead>
+      <tr>
+        <th>#</th><th>Студент</th><th>Всего</th><th>Решено</th>
+        <th class="col-extra">Задания</th><th class="col-extra">Ивенты</th>
+        <th class="col-extra">Бонусы</th><th class="col-extra">С опозданием</th>
+        <th class="col-extra">Первым</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in rows %}
+      <tr class="{{ 'me' if row.user.id == user.id }}">
+        <td class="rank {% if show_medals and loop.index <= 3 %}m{{ loop.index }}{% endif %}">
+          {% if show_medals and loop.index <= 3 %}{{ icon("medal") }}{% endif %}{{ loop.index }}
+        </td>
+        <td>
+          <span class="row" style="gap:9px; flex-wrap:nowrap">
+            <span class="avatar sm" style="--h: {{ row.user.display_name | hue }}">{{ row.user.display_name | initials }}</span>
+            <a href="/u/{{ row.user.id }}">{{ row.user.display_name }}</a>
+          </span>
+        </td>
+        <td class="points">{{ row.total | pts }}</td>
+        <td class="num">{{ row.solved }}</td>
+        <td class="num muted col-extra">{{ row.assignment_points | pts }}</td>
+        <td class="num muted col-extra">{{ row.event_points | pts }}</td>
+        <td class="num muted col-extra">{{ row.bonus_points | pts }}</td>
+        <td class="num muted col-extra">{{ row.late }}</td>
+        <td class="num muted col-extra">{{ row.first_bloods }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card">{{ empty("trophy", "Пока никого. Нужны назначенные задания и решённые задачи.") }}</div>
+{% endif %}
+{% endblock %}

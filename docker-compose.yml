@@ -1,0 +1,19 @@
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8000}:8000"
+    env_file:
+      # Файла может не быть при первом клоне — тогда работают значения по умолчанию,
+      # а приложение само скажет, что не хватает SECRET_KEY.
+      - path: .env
+        required: false
+    environment:
+      DATA_DIR: /data
+    volumes:
+      # Именованный том — база переживает docker compose down и пересборку образа.
+      - sport-data:/data
+
+volumes:
+  sport-data:

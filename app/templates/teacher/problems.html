@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_ui.html" import empty %}
+{% block title %}Поиск задач — {{ settings.app_name }}{% endblock %}
+{% block content %}
+<h1>Каталог задач</h1>
+<p class="sub">Найди задачу и скопируй её идентификатор в список.</p>
+
+<div class="card">
+  <form method="get" action="/teacher/problems" class="inline-form">
+    <div class="field" style="flex:1; min-width:240px;">
+      <label for="q">Название, слаг или код</label>
+      <input type="text" id="q" name="q" value="{{ q }}" autocomplete="off" placeholder="binary search">
+    </div>
+    <div class="field">
+      <label for="platform">Платформа</label>
+      <select id="platform" name="platform">
+        <option value="">Все</option>
+        {% for p in platforms %}
+        <option value="{{ p.value }}" {% if platform == p.value %}selected{% endif %}>{{ p.title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit">{{ icon("search") }} Искать</button>
+  </form>
+</div>
+
+{% if results %}
+<div class="card table-wrap" style="padding:6px">
+  <table>
+    <thead><tr><th>Задача</th><th>Платформа</th><th>Сложность</th><th>Темы</th><th>Для списка</th></tr></thead>
+    <tbody>
+    {% for problem in results %}
+      <tr>
+        <td><a href="{{ problem.url }}" target="_blank" rel="noopener">{{ problem.title }} {{ icon("external") }}</a></td>
+        <td class="small muted">{{ problem.platform.title }}</td>
+        <td>{% if problem.difficulty %}<span class="badge {{ problem.difficulty | lower }}">{{ problem.difficulty }}</span>
+            {% elif problem.rating %}<span class="badge rating">{{ problem.rating }}</span>{% else %}—{% endif %}</td>
+        <td class="small muted">{{ (problem.tags or [])[:3] | join(", ") }}</td>
+        <td><span class="badge mono">{% if problem.platform.value == "leetcode" %}lc:{{ problem.slug }}{% else %}cf:{{ problem.external_id }}{% endif %}</span></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card">{{ empty("search", "Ничего не найдено — попробуй другое слово." if q else "Введи название, слаг или код задачи.") }}</div>
+{% endif %}
+{% endblock %}

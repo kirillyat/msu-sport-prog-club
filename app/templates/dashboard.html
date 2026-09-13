@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% from "_ui.html" import empty %}
+{% from "_feed.html" import feed_list %}
+{% from "_announce.html" import announce_card %}
+{% block title %}Задания — {{ settings.app_name }}{% endblock %}
+{% block content %}
+<h1>Привет, {{ user.display_name }}</h1>
+<p class="sub">Твои задания и то, чем сейчас живёт клуб.</p>
+
+{% if missing_accounts %}
+<div class="card callout warn">
+  <h3>{{ icon("link") }} Привяжи аккаунты</h3>
+  <p class="small" style="margin:0 0 12px">
+    Без подтверждённого аккаунта решения не засчитываются. Не привязано:
+    {% for p in missing_accounts %}<span class="badge warn">{{ p.title }}</span> {% endfor %}
+  </p>
+  <a class="btn small" href="/accounts">{{ icon("plus") }} Привязать</a>
+</div>
+{% endif %}
+
+{% if announcements %}
+<h2>{{ icon("megaphone") }} Объявления</h2>
+<div class="grid two">
+  {% for item in announcements %}{{ announce_card(item, compact=True) }}{% endfor %}
+</div>
+{% endif %}
+
+{% if events %}
+<h2>{{ icon("calendar") }} Ивенты</h2>
+<div class="grid two">
+  {% for event in events %}
+  <a class="card" href="/events/{{ event.id }}">
+    <div class="row between">
+      <h3>{{ event.title }}</h3>
+      {% if event.starts_at <= now() and event.ends_at >= now() %}
+        <span class="badge ok">{{ icon("flame") }} идёт сейчас</span>
+      {% else %}
+        <span class="badge">{{ icon("clock") }} {{ event.starts_at | ago }}</span>
+      {% endif %}
+    </div>
+    <p class="small muted" style="margin:0">{{ event.starts_at | dt }} — {{ event.ends_at | dt }}</p>
+    {% if event.description %}<p class="small" style="margin:8px 0 0">{{ event.description }}</p>{% endif %}
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2>{{ icon("tasks") }} Задания</h2>
+{% if cards %}
+<div class="grid two">
+  {% for card in cards %}
+  <a class="card" href="/assignments/{{ card.assignment.id }}">
+    <div class="row between">
+      <h3>{{ card.assignment.title }}</h3>
+      {% if card.total and card.solved == card.total %}
+        <span class="badge ok">{{ icon("check") }} готово</span>
+      {% elif card.overdue %}
+        <span class="badge bad">{{ icon("alert") }} просрочено</span>
+      {% elif card.assignment.deadline %}
+        <span class="badge warn">{{ icon("clock") }} до {{ card.assignment.deadline | dt("%d.%m %H:%M") }}</span>
+      {% endif %}
+    </div>
+    <p class="small muted" style="margin:0 0 12px">
+      {% if card.assignment.group %}{{ card.assignment.group.title }} · {% endif %}
+      выдано {{ card.assignment.assigned_at | ago }}
+    </p>
+    <div class="bar {{ 'done' if card.total and card.solved == card.total }}">
+      <span style="width: {{ (100 * card.solved / card.total) if card.total else 0 }}%"></span>
+    </div>
+    <div class="progress-line">
+      <span><b>{{ card.solved }}</b> из <b>{{ card.total }}</b> задач</span>
+      <span>{{ ((100 * card.solved / card.total) | round | int) if card.total else 0 }}%</span>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card flat">
+  <p class="row small muted" style="margin:0">
+    {{ icon("inbox") }} Заданий пока нет. Вступи в группу по коду от преподавателя ↓
+  </p>
+</div>
+{% endif %}
+
+<div class="grid two" style="align-items: start">
+  <div>
+    <h2>{{ icon("users") }} Группы</h2>
+    <div class="card">
+      {% if groups %}
+        <p style="margin-top:0">{% for group in groups %}<span class="badge info">{{ group.title }}</span> {% endfor %}</p>
+      {% else %}
+        <p class="small muted" style="margin-top:0">Ты пока не состоишь ни в одной группе.</p>
+      {% endif %}
+      <form method="post" action="/groups/join" class="inline-form">
+        <div class="field" style="flex:1; min-width: 180px;">
+          <label for="join_code">Код группы</label>
+          <input type="text" id="join_code" name="join_code" placeholder="ABC123"
+                 autocomplete="off" required>
+        </div>
+        <button type="submit">{{ icon("plus") }} Вступить</button>
+      </form>
+    </div>
+  </div>
+
+  <div>
+    <h2>{{ icon("activity") }} {{ "Твои решения" if groups | length == 0 else "Что решают рядом" }}</h2>
+    <div class="card">
+      {{ feed_list(feed_items, show_day=False) }}
+      {% if feed_items %}
+      <hr class="divider">
+      <a class="small" href="/feed">Вся лента {{ icon("chevron") }}</a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

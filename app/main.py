@@ -1,0 +1,100 @@
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import logging
+from collections.abc import AsyncIterator
+from urllib.parse import quote
+
+from fastapi import FastAPI, Request
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
+
+from app.bot import run_bot
+from app.config import settings
+from app.deps import Forbidden, RedirectToLogin
+from app.routers import accounts, announcements, auth, feed, leaderboard, student, teacher
+from app.scheduler import run_scheduler
+from app.templating import STATIC_DIR, templates
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+)
+logger = logging.getLogger("app")
+
+SECRET_HELP = """
+SECRET_KEY не задан или оставлен дефолтным.
+
+Этим ключом подписываются сессионные куки: с известным значением любой
+может подделать вход под чужим аккаунтом.
+
+Сгенерируй ключ и положи его в .env:
+
+    python -m app.cli gen-secret
+
+Если это разовый локальный запуск и риск понятен:
+
+    ALLOW_INSECURE_SECRET=true
+"""
+
+
+def check_startup_config() -> None:
+    if settings.secret_is_insecure and not settings.allow_insecure_secret:
+        raise RuntimeError(SECRET_HELP)
+    if settings.dev_login_enabled:
+        logger.warning("DEV_LOGIN_ENABLED=true — вход без Telegram открыт, не для прода")
+    if settings.allow_insecure_secret and settings.secret_is_insecure:
+        logger.warning("ALLOW_INSECURE_SECRET=true — сессии подделываются, только для отладки")
+
+
+@contextlib.asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    check_startup_config()
+    stop_event = asyncio.Event()
+    tasks: list[asyncio.Task] = []
+
+    if settings.enable_scheduler:
+        tasks.append(asyncio.create_task(run_scheduler(stop_event), name="scheduler"))
+    if settings.enable_bot and settings.telegram_bot_token:
+        tasks.append(asyncio.create_task(run_bot(stop_event), name="telegram-bot"))
+    try:
+        yield
+    finally:
+        stop_event.set()
+        for task in tasks:
+            task.cancel()
+        for task in tasks:
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await task
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan, docs_url=None, redoc_url=None)
+
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+app.include_router(auth.router)
+app.include_router(student.router)
+app.include_router(accounts.router)
+app.include_router(announcements.router)
+app.include_router(feed.router)
+app.include_router(leaderboard.router)
+app.include_router(teacher.router)
+
+
+@app.exception_handler(RedirectToLogin)
+async def _redirect_to_login(request: Request, exc: RedirectToLogin):
+    return RedirectResponse(f"/login?next={quote(exc.next_url)}", status_code=303)
+
+
+@app.exception_handler(Forbidden)
+async def _forbidden(request: Request, exc: Forbidden):
+    return templates.TemplateResponse(
+        request, "error.html", {"user": exc.user, "message": exc.message}, status_code=403
+    )
+
+
+@app.get("/healthz", include_in_schema=False)
+async def healthz():
+    return {"status": "ok"}

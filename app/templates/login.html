@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Вход — {{ settings.app_name }}{% endblock %}
+{% block content %}
+<div class="auth-shell">
+  {% if brand_logo %}
+  <div class="auth-logo bare">
+    <img class="{{ 'only-light' if brand_logo_dark }}"
+         src="/static/{{ brand_logo }}?v={{ asset_version }}" alt="{{ settings.app_name }}">
+    {% if brand_logo_dark %}
+    <img class="only-dark" src="/static/{{ brand_logo_dark }}?v={{ asset_version }}" alt="">
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="auth-logo">{{ icon("msu", "xl") }}</div>
+  {% endif %}
+  <h1>{{ settings.app_name }}</h1>
+  <p class="sub">
+    Тренировки, задания и рейтинг клуба. Решения с LeetCode и Codeforces
+    подтягиваются сами — достаточно один раз привязать аккаунт.
+  </p>
+
+  {% if error %}<div class="flash err">{{ icon("alert") }}<span>{{ error }}</span></div>{% endif %}
+
+  {% if deep_link %}
+  <div class="card">
+    <h3>{{ icon("send") }} Вход через Telegram</h3>
+    <p class="small muted">
+      Нажми кнопку — откроется чат с ботом, где нужно отправить <code class="mono">/start</code>.
+      После подтверждения эта страница откроется сама.
+    </p>
+    <p><a class="btn" href="{{ deep_link }}" target="_blank" rel="noopener">
+      {{ icon("send") }} Войти через Telegram</a></p>
+    <div class="row small muted">
+      {{ icon("clock") }}
+      <span id="status">Ждём подтверждения… код живёт {{ settings.login_code_ttl_seconds // 60 }} минут.</span>
+    </div>
+  </div>
+  {% else %}
+  <div class="card callout warn">
+    <h3>{{ icon("alert") }} Telegram-вход не настроен</h3>
+    <p class="small muted" style="margin:0">
+      Задай <code class="mono">TELEGRAM_BOT_TOKEN</code> и <code class="mono">TELEGRAM_BOT_USERNAME</code>
+      в <code class="mono">.env</code>, затем перезапусти приложение.
+    </p>
+  </div>
+  {% endif %}
+
+  {% if dev_login %}
+  <div class="card">
+    <h3>{{ icon("user") }} Локальный вход <span class="badge warn">dev</span></h3>
+    <p class="small muted">Работает только при <code class="mono">DEV_LOGIN_ENABLED=true</code>. Не включай в проде.</p>
+    <form method="post" action="/login/dev">
+      <div class="field">
+        <label for="name">Имя</label>
+        <input type="text" id="name" name="name" required autocomplete="off" placeholder="Как тебя зовут">
+      </div>
+      <div class="field">
+        <label class="check"><input type="checkbox" name="teacher" value="true"> преподаватель</label>
+      </div>
+      <button type="submit">{{ icon("chevron") }} Войти</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+{% if code %}
+<script>
+  const code = {{ code | tojson }};
+  const statusEl = document.getElementById("status");
+  let tries = 0;
+  const timer = setInterval(async () => {
+    if (++tries > 150) { clearInterval(timer); statusEl.textContent = "Код истёк — обнови страницу."; return; }
+    try {
+      const res = await fetch(`/login/status/${encodeURIComponent(code)}`);
+      const data = await res.json();
+      if (data.state === "confirmed") { clearInterval(timer); window.location = data.next; }
+      else if (data.state === "expired" || data.state === "unknown") {
+        clearInterval(timer);
+        statusEl.textContent = "Код истёк — обнови страницу.";
+      }
+    } catch (e) { /* сеть моргнула — попробуем на следующем тике */ }
+  }, 2000);
+</script>
+{% endif %}
+{% endblock %}

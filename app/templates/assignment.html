@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% from "_ui.html" import empty %}
+{% block title %}{{ assignment.title }} — {{ settings.app_name }}{% endblock %}
+{% block content %}
+{% set solved = progress.solved_count(user.id) %}
+<h1>{{ assignment.title }}</h1>
+<p class="sub">
+  Выдано {{ assignment.assigned_at | dt }}
+  {% if assignment.deadline %} · дедлайн {{ assignment.deadline | dt }}{% endif %}
+  {% if assignment.group %} · {{ assignment.group.title }}{% endif %}
+</p>
+
+<div class="card">
+  <div class="bar {{ 'done' if progress.total_problems and solved == progress.total_problems }}">
+    <span style="width: {{ (100 * solved / progress.total_problems) if progress.total_problems else 0 }}%"></span>
+  </div>
+  <div class="progress-line">
+    <span>Решено <b>{{ solved }}</b> из <b>{{ progress.total_problems }}</b></span>
+    <span>{{ ((100 * solved / progress.total_problems) | round | int) if progress.total_problems else 0 }}%</span>
+  </div>
+</div>
+
+{% if problems %}
+<div class="card table-wrap" style="padding:6px">
+  <table>
+    <thead>
+      <tr><th>#</th><th>Задача</th><th>Платформа</th><th>Сложность</th><th>Статус</th><th>Когда</th></tr>
+    </thead>
+    <tbody>
+    {% for problem in problems %}
+      {% set cell = progress.cell(user.id, problem.id) %}
+      <tr>
+        <td class="muted num">{{ loop.index }}</td>
+        <td><a href="{{ problem.url }}" target="_blank" rel="noopener">{{ problem.title }} {{ icon("external") }}</a></td>
+        <td class="small muted">{{ problem.platform.title }} · {{ problem.label }}</td>
+        <td>
+          {% if problem.difficulty %}<span class="badge {{ problem.difficulty | lower }}">{{ problem.difficulty }}</span>
+          {% elif problem.rating %}<span class="badge rating">{{ problem.rating }}</span>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+        <td>
+          {% if cell.status == SolveStatus.solved_in_time %}<span class="badge ok">{{ icon("check") }} решено</span>
+          {% elif cell.status == SolveStatus.solved_late %}<span class="badge warn">{{ icon("clock") }} после дедлайна</span>
+          {% elif cell.status == SolveStatus.solved_before %}<span class="badge">решено до выдачи</span>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+        <td class="small muted">
+          {% if cell.solved_at %}{{ cell.solved_at | ago }}
+          {% elif cell.first_ever_at %}{{ cell.first_ever_at | ago }}
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card">{{ empty("inbox", "В этом задании ещё нет задач.") }}</div>
+{% endif %}
+
+<p class="small muted">
+  Задачи, решённые до выдачи задания, не засчитываются{% if assignment.count_prior_solves %} —
+  но в этом задании преподаватель включил их зачёт{% endif %}.
+</p>
+{% endblock %}

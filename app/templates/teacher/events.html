@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% from "_ui.html" import empty %}
+{% block title %}Ивенты — {{ settings.app_name }}{% endblock %}
+{% block content %}
+<h1>Ивенты</h1>
+<p class="sub">Окно по времени: засчитываются только решения, отправленные между началом и концом.</p>
+
+<div class="card">
+  <h3>{{ icon("plus") }} Новый ивент</h3>
+  {% if not sets %}
+    <p class="small muted" style="margin:0">Сначала собери <a href="/teacher/sets">список задач</a>.</p>
+  {% else %}
+  <form method="post" action="/teacher/events">
+    <div class="grid two">
+      <div class="field">
+        <label for="title">Название</label>
+        <input type="text" id="title" name="title" placeholder="Субботний марафон" required>
+      </div>
+      <div class="field">
+        <label for="problem_set_id">Список задач</label>
+        <select id="problem_set_id" name="problem_set_id" required>
+          {% for item in sets %}<option value="{{ item.id }}">{{ item.title }} ({{ item.items | length }})</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="starts_at">Начало</label>
+        <input type="datetime-local" id="starts_at" name="starts_at" required>
+      </div>
+      <div class="field">
+        <label for="ends_at">Конец</label>
+        <input type="datetime-local" id="ends_at" name="ends_at" required>
+      </div>
+      <div class="field">
+        <label for="group_id">Группа (пусто — для всех)</label>
+        <select id="group_id" name="group_id">
+          <option value="">Для всех</option>
+          {% for group in groups %}<option value="{{ group.id }}">{{ group.title }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="description">Описание</label>
+        <input type="text" id="description" name="description">
+      </div>
+      <div class="field">
+        <label for="points_per_problem">Баллов за задачу</label>
+        <input type="number" step="0.5" id="points_per_problem" name="points_per_problem" value="10">
+      </div>
+      <div class="field">
+        <label for="full_clear_bonus">Бонус за полный комплект</label>
+        <input type="number" step="0.5" id="full_clear_bonus" name="full_clear_bonus" value="20">
+      </div>
+    </div>
+    <button type="submit">{{ icon("calendar") }} Создать</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if events %}
+<div class="card table-wrap" style="padding:6px">
+  <table>
+    <thead><tr><th>Ивент</th><th>Окно</th><th>Группа</th><th>Задач</th><th></th></tr></thead>
+    <tbody>
+    {% for event in events %}
+      <tr>
+        <td>
+          <a href="/events/{{ event.id }}">{{ event.title }}</a>
+          {% if event.starts_at <= now() and event.ends_at >= now() %}
+            <span class="badge ok">{{ icon("flame") }} идёт</span>{% endif %}
+        </td>
+        <td class="small muted">{{ event.starts_at | dt }} — {{ event.ends_at | dt }}</td>
+        <td class="small muted">{{ event.group.title if event.group else "все" }}</td>
+        <td class="num">{{ event.problem_set.items | length }}</td>
+        <td style="text-align:right">
+          <form method="post" action="/teacher/events/{{ event.id }}/delete"
+                onsubmit="return confirm('Удалить ивент «{{ event.title }}»?')">
+            <button class="danger small" type="submit">{{ icon("trash") }}</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card">{{ empty("calendar", "Ивентов пока нет.") }}</div>
+{% endif %}
+{% endblock %}

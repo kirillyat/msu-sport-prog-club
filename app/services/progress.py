@@ -1,0 +1,185 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime
+
+from sqlalchemy import Select, case, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models import (
+    Assignment,
+    Group,
+    GroupMembership,
+    Problem,
+    ProblemSetItem,
+    SolveStatus,
+    Submission,
+    User,
+)
+
+SOLVED_STATUSES = {SolveStatus.solved_in_time, SolveStatus.solved_late}
+
+
+@dataclass(slots=True)
+class Cell:
+    status: SolveStatus = SolveStatus.not_solved
+    solved_at: datetime | None = None
+    first_ever_at: datetime | None = None
+
+    @property
+    def counts(self) -> bool:
+        """Засчитывается ли решение в прогресс по заданию."""
+        return self.status in SOLVED_STATUSES
+
+    @property
+    def icon(self) -> str:
+        return {
+            SolveStatus.solved_in_time: "✓",
+            SolveStatus.solved_late: "✓",
+            SolveStatus.solved_before: "•",
+            SolveStatus.not_solved: "",
+        }[self.status]
+
+
+@dataclass(slots=True)
+class AssignmentProgress:
+    assignment: Assignment
+    problems: list[Problem]
+    participants: list[User]
+    cells: dict[tuple[int, int], Cell] = field(default_factory=dict)
+
+    def cell(self, user_id: int, problem_id: int) -> Cell:
+        return self.cells.get((user_id, problem_id), Cell())
+
+    def row(self, user_id: int) -> list[Cell]:
+        return [self.cell(user_id, p.id) for p in self.problems]
+
+    def solved_count(self, user_id: int) -> int:
+        return sum(1 for c in self.row(user_id) if c.counts)
+
+    def problem_solved_count(self, problem_id: int) -> int:
+        return sum(1 for u in self.participants if self.cell(u.id, problem_id).counts)
+
+    @property
+    def total_problems(self) -> int:
+        return len(self.problems)
+
+    def is_complete(self, user_id: int) -> bool:
+        return self.total_problems > 0 and self.solved_count(user_id) == self.total_problems
+
+
+async def participants_for_assignment(session: AsyncSession, assignment: Assignment) -> list[User]:
+    if assignment.user_id is not None:
+        user = await session.get(User, assignment.user_id)
+        return [user] if user else []
+    stmt: Select = (
+        select(User)
+        .join(GroupMembership, GroupMembership.user_id == User.id)
+        .where(GroupMembership.group_id == assignment.group_id, User.is_active.is_(True))
+        .order_by(User.display_name)
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def problems_for_set(session: AsyncSession, problem_set_id: int) -> list[Problem]:
+    stmt = (
+        select(Problem)
+        .join(ProblemSetItem, ProblemSetItem.problem_id == Problem.id)
+        .where(ProblemSetItem.problem_set_id == problem_set_id)
+        .order_by(ProblemSetItem.position, ProblemSetItem.id)
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def _solve_times(
+    session: AsyncSession, user_ids: list[int], problem_ids: list[int], since: datetime
+) -> dict[tuple[int, int], tuple[datetime | None, datetime | None]]:
+    """(user, problem) -> (первое решение вообще, первое решение после `since`)."""
+    if not user_ids or not problem_ids:
+        return {}
+    after = func.min(case((Submission.submitted_at >= since, Submission.submitted_at)))
+    stmt = (
+        select(Submission.user_id, Submission.problem_id, func.min(Submission.submitted_at), after)
+        .where(
+            Submission.is_accepted.is_(True),
+            Submission.user_id.in_(user_ids),
+            Submission.problem_id.in_(problem_ids),
+        )
+        .group_by(Submission.user_id, Submission.problem_id)
+    )
+    out: dict[tuple[int, int], tuple[datetime | None, datetime | None]] = {}
+    for user_id, problem_id, first_ever, first_after in (await session.execute(stmt)).all():
+        out[(user_id, problem_id)] = (first_ever, first_after)
+    return out
+
+
+def _status(
+    first_ever: datetime | None,
+    first_after: datetime | None,
+    deadline: datetime | None,
+    count_prior: bool,
+) -> tuple[SolveStatus, datetime | None]:
+    if first_after is not None:
+        if deadline is None or first_after <= deadline:
+            return SolveStatus.solved_in_time, first_after
+        return SolveStatus.solved_late, first_after
+    if first_ever is not None:
+        # Задача была решена ещё до выдачи задания. По умолчанию не засчитываем,
+        # иначе баллы капают за работу прошлых лет.
+        if count_prior:
+            return SolveStatus.solved_in_time, first_ever
+        return SolveStatus.solved_before, first_ever
+    return SolveStatus.not_solved, None
+
+
+async def compute_progress(
+    session: AsyncSession,
+    assignment: Assignment,
+    participants: list[User] | None = None,
+) -> AssignmentProgress:
+    participants = (
+        participants
+        if participants is not None
+        else await participants_for_assignment(session, assignment)
+    )
+    problems = await problems_for_set(session, assignment.problem_set_id)
+    progress = AssignmentProgress(
+        assignment=assignment, problems=problems, participants=participants
+    )
+
+    times = await _solve_times(
+        session,
+        [u.id for u in participants],
+        [p.id for p in problems],
+        assignment.assigned_at,
+    )
+    for (user_id, problem_id), (first_ever, first_after) in times.items():
+        status, solved_at = _status(
+            first_ever, first_after, assignment.deadline, assignment.count_prior_solves
+        )
+        progress.cells[(user_id, problem_id)] = Cell(
+            status=status, solved_at=solved_at, first_ever_at=first_ever
+        )
+    return progress
+
+
+async def assignments_for_user(session: AsyncSession, user: User) -> list[Assignment]:
+    group_ids = select(GroupMembership.group_id).where(GroupMembership.user_id == user.id)
+    stmt = (
+        select(Assignment)
+        .where(
+            (Assignment.user_id == user.id) | (Assignment.group_id.in_(group_ids)),
+        )
+        .order_by(Assignment.assigned_at.desc())
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def groups_for_user(session: AsyncSession, user: User) -> list[Group]:
+    stmt = (
+        select(Group)
+        .join(GroupMembership, GroupMembership.group_id == Group.id)
+        .where(GroupMembership.user_id == user.id, Group.is_archived.is_(False))
+        .order_by(Group.title)
+    )
+    return list((await session.execute(stmt)).scalars().all())

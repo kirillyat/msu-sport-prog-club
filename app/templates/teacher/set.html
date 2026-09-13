@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% from "_ui.html" import empty %}
+{% block title %}{{ set.title }} — {{ settings.app_name }}{% endblock %}
+{% block content %}
+<h1>{{ set.title }}</h1>
+<p class="sub">{{ set.description or "Без описания" }} · {{ set.items | length }} задач</p>
+
+{% if set.items %}
+<div class="card table-wrap" style="padding:6px">
+  <table>
+    <thead><tr><th>#</th><th>Задача</th><th>Платформа</th><th>Сложность</th><th>Темы</th><th></th></tr></thead>
+    <tbody>
+    {% for item in set.items %}
+      <tr>
+        <td class="muted num">{{ loop.index }}</td>
+        <td><a href="{{ item.problem.url }}" target="_blank" rel="noopener">{{ item.problem.title }} {{ icon("external") }}</a></td>
+        <td class="small muted">{{ item.problem.platform.title }} · {{ item.problem.label }}</td>
+        <td>{% if item.problem.difficulty %}<span class="badge {{ item.problem.difficulty | lower }}">{{ item.problem.difficulty }}</span>
+            {% elif item.problem.rating %}<span class="badge rating">{{ item.problem.rating }}</span>{% else %}—{% endif %}</td>
+        <td class="small muted">{{ (item.problem.tags or [])[:3] | join(", ") }}</td>
+        <td style="text-align:right">
+          <form method="post" action="/teacher/sets/{{ set.id }}/remove/{{ item.id }}">
+            <button class="danger small" type="submit">{{ icon("trash") }}</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card">{{ empty("inbox", "Задач пока нет — добавь их в форме ниже.") }}</div>
+{% endif %}
+
+<div class="card">
+  <h3>{{ icon("plus") }} Добавить задачи</h3>
+  <form method="post" action="/teacher/sets/{{ set.id }}/add">
+    <div class="field">
+      <textarea name="problems_text" placeholder="Ссылки, слаги или коды — по одной строке" required></textarea>
+    </div>
+    <button type="submit">{{ icon("plus") }} Добавить</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>{{ icon("tasks") }} Где используется</h3>
+  {% for assignment in used_in %}
+    <p style="margin:0 0 6px"><a href="/teacher/assignments/{{ assignment.id }}">{{ assignment.title }}</a></p>
+  {% else %}
+    <p class="small muted">Нигде. Список можно удалить.</p>
+    <form method="post" action="/teacher/sets/{{ set.id }}/delete"
+          onsubmit="return confirm('Удалить список «{{ set.title }}»?')">
+      <button class="danger small" type="submit">{{ icon("trash") }} Удалить список</button>
+    </form>
+  {% endfor %}
+</div>
+{% endblock %}
