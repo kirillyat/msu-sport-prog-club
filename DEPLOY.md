@@ -26,8 +26,9 @@ HTTPS обязателен: без него не работает вход че�
 
 ## 2. Что предоставляет владелец портала
 
-Эти значения admin получает от Кирилла и вписывает в `.env`. Ничего из этого
-нельзя коммитить в репозиторий — файл `.env` намеренно в `.gitignore`.
+Значения из блока Telegram присылает владелец портала. Значения OIDC заводит
+и возвращает администратор Authentik — см. раздел 3. Ничего из этого нельзя
+коммитить в репозиторий: файл `.env` намеренно в `.gitignore`.
 
 | Переменная | Что это | Где взять |
 |---|---|---|
@@ -36,30 +37,67 @@ HTTPS обязателен: без него не работает вход че�
 | `TELEGRAM_BOT_USERNAME` | имя бота без `@` | там же |
 | `TELEGRAM_NOTIFY_CHAT_ID` | чат клуба для уведомлений | даёт Кирилл |
 | `TEACHER_TELEGRAM_IDS` | telegram id преподавателей через запятую | даёт Кирилл |
-| `OIDC_ISSUER` | адрес провайдера Authentik | настраивается вместе с админом Authentik |
-| `OIDC_CLIENT_ID` | идентификатор приложения | Authentik |
-| `OIDC_CLIENT_SECRET` | секрет; пусто для публичного клиента с PKCE | Authentik |
-| `OIDC_TEACHER_GROUPS` | группы, дающие роль преподавателя | согласовать |
+| `OIDC_ISSUER` | адрес провайдера Authentik | админ Authentik, см. раздел 3 |
+| `OIDC_CLIENT_ID` | идентификатор приложения | админ Authentik |
+| `OIDC_CLIENT_SECRET` | секрет; пусто для публичного клиента | админ Authentik |
+| `OIDC_TEACHER_GROUPS` | группа, дающая роль преподавателя | админ Authentik |
 
 `SECRET_KEY` не передаётся: его генерирует admin прямо на сервере (шаг 4) и
 никому не сообщает.
 
 ---
 
-## 3. Настройка Authentik
+## 3. Authentik — что создать и что вернуть
 
-Applications → Providers → Create → **OAuth2/OpenID Provider**.
+Этот раздел для того, у кого есть админ-доступ к Authentik. Владелец портала
+такого доступа не имеет, поэтому провайдера заводит администратор и возвращает
+четыре значения.
 
-- **Redirect URI**: `<BASE_URL>/login/oidc/callback` — например
-  `https://sport.ai.msu.ru/login/oidc/callback`
-- **Client type**: Public (тогда `OIDC_CLIENT_SECRET` оставить пустым) или
-  Confidential (тогда вписать секрет)
-- **Scopes**: `openid profile email` плюс scope mapping для `groups` — без него
-  роль преподавателя по группе выдаваться не будет
-- `OIDC_ISSUER` копируется из карточки провайдера, поле «OpenID Configuration Issuer»
+### Создать провайдера
 
-Если Authentik не используется, оставить `OIDC_ISSUER` пустым — вход через
-Telegram работает независимо.
+**Applications → Providers → Create → OAuth2/OpenID Provider**
+
+| Поле | Значение |
+|---|---|
+| Name | `sport-prog-club` (любое понятное) |
+| Authorization flow | стандартный `default-provider-authorization-explicit-consent` |
+| Client type | **Public** — тогда секрет не нужен, используется PKCE. Confidential тоже подойдёт |
+| Redirect URIs | `https://<домен портала>/login/oidc/callback` — строго этот адрес, одной строкой |
+| Scopes | `openid`, `profile`, `email` |
+| Subject mode | по умолчанию (`Based on the User's hashed ID`) |
+
+### Создать приложение
+
+**Applications → Applications → Create**, привязать к созданному провайдеру.
+`Slug` приложения попадает в адрес issuer, поэтому его удобно сделать
+`sport-prog-club`.
+
+### Группы
+
+Роль преподавателя на портале выдаётся по членству в группе Authentik.
+Нужно, чтобы в токене был клейм со списком групп — в Authentik это делается
+scope mapping'ом для `groups`. Если клейм называется не `groups`, сообщите его
+имя: на стороне портала оно настраивается переменной `OIDC_GROUPS_CLAIM`.
+
+Создать (или указать существующую) группу для преподавателей, например
+`sport-teachers`, и добавить туда нужных людей.
+
+### Что вернуть владельцу портала
+
+| Что прислать | Где взять в Authentik | Переменная в `.env` |
+|---|---|---|
+| Issuer | карточка провайдера → **OpenID Configuration Issuer**, вид `https://<authentik>/application/o/sport-prog-club/` | `OIDC_ISSUER` |
+| Client ID | карточка провайдера → **Client ID** | `OIDC_CLIENT_ID` |
+| Client Secret | только если выбран Confidential; для Public — прислать пустым | `OIDC_CLIENT_SECRET` |
+| Имя группы преподавателей | как названа группа | `OIDC_TEACHER_GROUPS` |
+
+Client Secret — это секрет: передавать его тем же каналом, что и остальные
+токены, и не оставлять в переписке, которая архивируется.
+
+### Если Authentik не подключаем
+
+Оставить `OIDC_ISSUER` пустым — блок входа через Authentik просто не появится
+на странице входа. Вход через Telegram работает независимо.
 
 ---
 
