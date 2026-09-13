@@ -1,0 +1,211 @@
+# Развёртывание — инструкция системному администратору
+
+Портал клуба спортивного программирования ФИИ МГУ. Одно веб-приложение на Python
+и база SQLite в томе Docker. Внешних сервисов не требует: ни СУБД, ни очередей,
+ни кеша.
+
+Репозиторий: `https://git.ai.msu.ru/kirillyat/sport-prog-club`
+
+---
+
+## 1. Что нужно на сервере
+
+| | |
+|---|---|
+| ОС | любая с Docker |
+| Пакеты | `git`, `docker`, `docker compose` (или `docker-compose`) |
+| Диск | 1 ГБ достаточно: база с каталогом задач ~30 МБ, растёт медленно |
+| Память | 512 МБ |
+| Порты | приложение слушает `127.0.0.1:8000`, наружу его отдаёт обратный прокси |
+| Исходящий доступ | `codeforces.com`, `leetcode.com`, `api.telegram.org` — без них не будут подтягиваться решения и работать вход |
+
+HTTPS обязателен: без него не работает вход через Authentik, а сессионные куки
+передаются открытым текстом.
+
+---
+
+## 2. Что предоставляет владелец портала
+
+Эти значения admin получает от Кирилла и вписывает в `.env`. Ничего из этого
+нельзя коммитить в репозиторий — файл `.env` намеренно в `.gitignore`.
+
+| Переменная | Что это | Где взять |
+|---|---|---|
+| `BASE_URL` | внешний адрес, обязательно `https://` | согласовать домен |
+| `TELEGRAM_BOT_TOKEN` | токен бота | @BotFather, даёт Кирилл |
+| `TELEGRAM_BOT_USERNAME` | имя бота без `@` | там же |
+| `TELEGRAM_NOTIFY_CHAT_ID` | чат клуба для уведомлений | даёт Кирилл |
+| `TEACHER_TELEGRAM_IDS` | telegram id преподавателей через запятую | даёт Кирилл |
+| `OIDC_ISSUER` | адрес провайдера Authentik | настраивается вместе с админом Authentik |
+| `OIDC_CLIENT_ID` | идентификатор приложения | Authentik |
+| `OIDC_CLIENT_SECRET` | секрет; пусто для публичного клиента с PKCE | Authentik |
+| `OIDC_TEACHER_GROUPS` | группы, дающие роль преподавателя | согласовать |
+
+`SECRET_KEY` не передаётся: его генерирует admin прямо на сервере (шаг 4) и
+никому не сообщает.
+
+---
+
+## 3. Настройка Authentik
+
+Applications → Providers → Create → **OAuth2/OpenID Provider**.
+
+- **Redirect URI**: `<BASE_URL>/login/oidc/callback` — например
+  `https://sport.ai.msu.ru/login/oidc/callback`
+- **Client type**: Public (тогда `OIDC_CLIENT_SECRET` оставить пустым) или
+  Confidential (тогда вписать секрет)
+- **Scopes**: `openid profile email` плюс scope mapping для `groups` — без него
+  роль преподавателя по группе выдаваться не будет
+- `OIDC_ISSUER` копируется из карточки провайдера, поле «OpenID Configuration Issuer»
+
+Если Authentik не используется, оставить `OIDC_ISSUER` пустым — вход через
+Telegram работает независимо.
+
+---
+
+## 4. Установка
+
+```bash
+git clone https://git.ai.msu.ru/kirillyat/sport-prog-club.git /srv/sport
+cd /srv/sport
+cp .env.example .env
+```
+
+Сгенерировать ключ подписи сессий и вписать его в `.env` вместо заготовки:
+
+```bash
+python3 -c "import secrets; print('SECRET_KEY=' + secrets.token_urlsafe(48))"
+```
+
+Заполнить остальные значения из таблицы выше. Проверить, что
+`DEV_LOGIN_ENABLED=false` — эта настройка открывает вход по одному лишь имени.
+
+Запустить:
+
+```bash
+docker compose up -d --build
+```
+
+Приложение само применит миграции при старте и начнёт скачивать каталоги задач
+Codeforces и LeetCode — около 15 000 задач, занимает 1–2 минуты.
+
+Проверка:
+
+```bash
+curl -fsS http://127.0.0.1:8000/healthz     # {"status":"ok"}
+docker compose logs --tail 30
+```
+
+Если `SECRET_KEY` не задан, контейнер **осознанно не стартует** и пишет об этом
+в лог: с известным ключом любой может подделать вход под чужим аккаунтом.
+
+---
+
+## 5. Обратный прокси
+
+Наружу отдаётся один порт. Пример для nginx:
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name sport.ai.msu.ru;
+
+    ssl_certificate     /etc/letsencrypt/live/sport.ai.msu.ru/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/sport.ai.msu.ru/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+Порт 8000 наружу закрыть — он должен быть доступен только прокси.
+
+---
+
+## 6. Проверка перед вводом в строй
+
+| | |
+|---|---|
+| `SECRET_KEY` | свой, не из примера |
+| `DEV_LOGIN_ENABLED` | `false` |
+| `BASE_URL` | внешний адрес с `https://` |
+| Порт 8000 | закрыт снаружи |
+| `/healthz` | отвечает через прокси по HTTPS |
+| Первый вход | **первый, кто войдёт, станет преподавателем** — пусть это будет Кирилл |
+
+---
+
+## 7. Обновление
+
+```bash
+cd /srv/sport
+docker compose exec -T web python -m app.cli backup /data/backup-$(date +%F).db
+git pull
+docker compose up -d --build
+```
+
+Миграции применяются сами при старте. **Откат кода не откатывает схему базы:**
+если миграция уже применилась, возвращаться нужно вперёд, а не назад.
+
+---
+
+## 8. Резервное копирование
+
+Обычное копирование файла базы не подходит: при включённом режиме WAL часть
+транзакций лежит в `sport.db-wal`, и копия может оказаться битой. Правильный
+способ работает на живом сервисе:
+
+```bash
+docker compose exec -T web python -m app.cli backup /data/backup.db
+docker compose cp web:/data/backup.db /var/backups/sport-$(date +%F).db
+```
+
+В cron, ежедневно в 4 утра:
+
+```cron
+0 4 * * * cd /srv/sport && docker compose exec -T web python -m app.cli backup /data/backup.db && docker compose cp web:/data/backup.db /var/backups/sport-$(date +\%F).db
+```
+
+Восстановление: остановить контейнер, положить файл как `sport.db` в том
+`sport_sport-data`, запустить снова.
+
+---
+
+## 9. Если что-то не так
+
+| Симптом | Причина |
+|---|---|
+| Контейнер не стартует, в логе про `SECRET_KEY` | ключ не задан или оставлен из примера |
+| Вход через Telegram не предлагается | пустой `TELEGRAM_BOT_TOKEN` или `TELEGRAM_BOT_USERNAME` |
+| Вход через Authentik не предлагается | пустой `OIDC_ISSUER` или `OIDC_CLIENT_ID` |
+| `401` от Authentik после входа | Redirect URI в Authentik не совпадает с `<BASE_URL>/login/oidc/callback` |
+| Решения студентов не подтягиваются | нет исходящего доступа к `codeforces.com` / `leetcode.com`, либо аккаунт не подтверждён студентом |
+| Уведомления не приходят | пустой `TELEGRAM_NOTIFY_CHAT_ID`, либо бот не добавлен в чат |
+
+Логи: `docker compose logs -f web`. Ошибки синхронизации видны и в интерфейсе —
+на странице «Аккаунты» у студента.
+
+---
+
+## Приложение. Просьба по Gitea
+
+На `git.ai.msu.ru` отключено зеркалирование репозиториев
+(`mirrors_disabled: true` в API). Если это возможно, просьба включить в
+`app.ini`:
+
+```ini
+[mirror]
+ENABLED = true
+```
+
+Это позволит держать копию репозитория на GitHub автоматически, без ручных
+операций и без хранения токенов в CI.
+
+Отдельно: для запуска тестов и сборки образа на стороне Gitea нужен
+подключённый `act_runner` с меткой `ubuntu-latest` — файлы workflow уже лежат
+в `.github/workflows/`.
