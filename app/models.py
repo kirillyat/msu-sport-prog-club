@@ -111,6 +111,10 @@ class User(Base):
     telegram_id: Mapped[int | None] = mapped_column(Integer, unique=True, index=True)
     telegram_username: Mapped[str | None] = mapped_column(String(64))
 
+    # Идентификатор пользователя у OIDC-провайдера (Authentik). Стабилен, в отличие от email.
+    oidc_sub: Mapped[str | None] = mapped_column(String(255), unique=True, index=True)
+    email: Mapped[str | None] = mapped_column(String(255))
+
     accounts: Mapped[list[PlatformAccount]] = relationship(
         back_populates="user", cascade="all, delete-orphan", lazy="selectin"
     )
@@ -203,6 +207,8 @@ class Group(Base):
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Telegram-чат группы для уведомлений. Пусто — уходит в общий чат клуба.
+    telegram_chat_id: Mapped[str | None] = mapped_column(String(32))
 
     memberships: Mapped[list[GroupMembership]] = relationship(
         back_populates="group", cascade="all, delete-orphan"
@@ -315,6 +321,8 @@ class Announcement(Base):
     pinned: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    # Когда ушло напоминание о старте, чтобы не слать дважды.
+    reminded_at: Mapped[datetime | None] = mapped_column()
 
     group: Mapped[Group | None] = relationship(lazy="selectin")
 
@@ -385,6 +393,11 @@ class LoginToken(Base):
     display_name: Mapped[str | None] = mapped_column(String(120))
     confirmed_at: Mapped[datetime | None] = mapped_column()
     consumed_at: Mapped[datetime | None] = mapped_column()
+    # Если задано — это не вход, а привязка Telegram к уже существующей учётке.
+    # SQLite пересоздаёт таблицу при ALTER, поэтому имя ограничения задаём явно.
+    link_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE", name="fk_login_token_link_user")
+    )
 
 
 class SyncState(Base):

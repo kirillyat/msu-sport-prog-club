@@ -9,6 +9,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import notify
 from app.deps import SessionDep, TeacherUser
 from app.models import (
     Announcement,
@@ -190,6 +191,24 @@ async def group_detail(request: Request, session: SessionDep, user: TeacherUser,
             **_flash(request),
         },
     )
+
+
+@router.post("/groups/{group_id}/chat")
+async def set_group_chat(
+    session: SessionDep, user: TeacherUser, group_id: int, chat_id: str = Form("")
+):
+    group = await session.get(Group, group_id)
+    if group is None:
+        return _redirect("/teacher/groups", error="Группа+не+найдена")
+    chat = chat_id.strip()
+    if chat and not chat.lstrip("-").isdigit():
+        return _redirect(
+            f"/teacher/groups/{group_id}", error="Id+чата+—+число,+например+-1001234567890"
+        )
+    group.telegram_chat_id = chat or None
+    await session.commit()
+    message = "Чат+группы+сохранён" if chat else "Чат+группы+отвязан"
+    return _redirect(f"/teacher/groups/{group_id}", message=message)
 
 
 @router.post("/groups/{group_id}/remove/{user_id}")
@@ -411,7 +430,15 @@ async def create_assignment(
     session.add(assignment)
     await session.commit()
     await session.refresh(assignment)
-    return _redirect(f"/teacher/assignments/{assignment.id}", message="Задание+выдано")
+    # После refresh связи не загружены — считаем задачи отдельным запросом.
+    problems = await session.scalar(
+        select(func.count()).select_from(ProblemSetItem).where(
+            ProblemSetItem.problem_set_id == problem_set_id
+        )
+    )
+    delivered = await notify.notify_assignment(assignment, int(problems or 0), session)
+    suffix = "+и+отправлено+в+Telegram" if delivered else ""
+    return _redirect(f"/teacher/assignments/{assignment.id}", message="Задание+выдано" + suffix)
 
 
 @router.get("/assignments/{assignment_id}")
@@ -518,7 +545,7 @@ async def announcements_page(request: Request, session: SessionDep, user: Teache
     return templates.TemplateResponse(
         request,
         "teacher/announcements.html",
-        {"user": user, "items": items, "groups": groups, "now": utcnow(), **_flash(request)},
+        {"user": user, "items": items, "groups": groups, "now_ts": utcnow(), **_flash(request)},
     )
 
 
@@ -548,21 +575,23 @@ async def create_announcement(
     if start and end and end <= start:
         return _redirect("/teacher/announcements", error="Конец+раньше+начала")
 
-    session.add(
-        Announcement(
-            title=title,
-            body=body.strip() or None,
-            url=link or None,
-            url_label=url_label.strip() or None,
-            group_id=int(group_id) if group_id.strip() else None,
-            starts_at=start,
-            ends_at=end,
-            pinned=pinned,
-            created_by_id=user.id,
-        )
+    item = Announcement(
+        title=title,
+        body=body.strip() or None,
+        url=link or None,
+        url_label=url_label.strip() or None,
+        group_id=int(group_id) if group_id.strip() else None,
+        starts_at=start,
+        ends_at=end,
+        pinned=pinned,
+        created_by_id=user.id,
     )
+    session.add(item)
     await session.commit()
-    return _redirect("/teacher/announcements", message="Объявление+опубликовано")
+    await session.refresh(item)
+    delivered = await notify.notify_announcement(item, session)
+    suffix = "+и+отправлено+в+Telegram" if delivered else ""
+    return _redirect("/teacher/announcements", message="Объявление+опубликовано" + suffix)
 
 
 @router.post("/announcements/{announcement_id}/pin")

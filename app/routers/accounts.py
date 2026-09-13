@@ -4,6 +4,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 
+from app.config import settings
 from app.deps import CurrentUser, SessionDep
 from app.models import Platform, PlatformAccount
 from app.services import verification
@@ -36,6 +37,34 @@ async def accounts_page(request: Request, user: CurrentUser):
             "error": request.query_params.get("err"),
         },
     )
+
+
+def _login_methods(user) -> int:
+    """Сколько способов входа осталось. Последний отвязывать нельзя."""
+    return sum(1 for value in (user.telegram_id, user.oidc_sub) if value)
+
+
+@router.post("/telegram/unlink")
+async def unlink_telegram(session: SessionDep, user: CurrentUser):
+    if user.telegram_id is None:
+        return _back(error="Telegram не привязан")
+    if _login_methods(user) < 2:
+        return _back(error="Это единственный способ входа — сначала привяжи другой")
+    user.telegram_id = None
+    user.telegram_username = None
+    await session.commit()
+    return _back(message="Telegram отвязан")
+
+
+@router.post("/oidc/unlink")
+async def unlink_oidc(session: SessionDep, user: CurrentUser):
+    if user.oidc_sub is None:
+        return _back(error=f"{settings.oidc_provider_name} не привязан")
+    if _login_methods(user) < 2:
+        return _back(error="Это единственный способ входа — сначала привяжи другой")
+    user.oidc_sub = None
+    await session.commit()
+    return _back(message=f"{settings.oidc_provider_name} отвязан")
 
 
 @router.post("/link")

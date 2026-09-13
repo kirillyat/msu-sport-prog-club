@@ -22,20 +22,25 @@ from app.models import Base  # noqa: E402
 
 
 @pytest_asyncio.fixture
-async def session(tmp_path: Path) -> AsyncIterator[AsyncSession]:
+async def db(tmp_path: Path) -> AsyncIterator[async_sessionmaker]:
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'test.db'}")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    maker = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
-    async with maker() as s:
-        yield s
+    yield async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
     await engine.dispose()
 
 
 @pytest_asyncio.fixture
-async def client(session: AsyncSession) -> AsyncIterator:
+async def session(db: async_sessionmaker) -> AsyncIterator[AsyncSession]:
+    async with db() as s:
+        yield s
+
+
+@pytest_asyncio.fixture
+async def client(session: AsyncSession, db: async_sessionmaker, monkeypatch) -> AsyncIterator:
     import httpx
 
+    from app import ticker
     from app.db import get_session
     from app.main import app
 
@@ -43,6 +48,8 @@ async def client(session: AsyncSession) -> AsyncIterator:
         yield session
 
     app.dependency_overrides[get_session] = _override
+    # Middleware строки событий открывает сессии сам, минуя dependency override.
+    monkeypatch.setattr(ticker, "SessionLocal", db)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(
         transport=transport, base_url="http://test", follow_redirects=True

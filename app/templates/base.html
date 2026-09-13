@@ -5,6 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>{% block title %}{{ settings.app_name }}{% endblock %}</title>
+  {# Тему ставим до первой отрисовки, иначе при загрузке мигает светлым. #}
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("sport-theme");
+        // По умолчанию — светлая тема, поэтому без выбора атрибут не ставим.
+        if (t === "light" || t === "dark" || t === "auto") document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    })();
+  </script>
   <link rel="stylesheet" href="/static/style.css?v={{ asset_version }}">
   {% if favicon_asset %}
   <link rel="icon" href="/static/{{ favicon_asset }}?v={{ asset_version }}">
@@ -12,65 +22,102 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2314448f' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'><path d='M12 1.2v3.4'/><path d='M9 8.2 12 4.6l3 3.6'/><path d='M9.6 21V8.2h4.8V21'/><path d='M4.5 21v-7.4h5.1'/><path d='M19.5 21v-7.4h-5.1'/><path d='M2.8 21h18.4'/><path d='M11 21v-3.4h2V21'/></svg>">
   {% endif %}
 </head>
-<body>
+<body class="{{ 'with-rail' if user }}">
 {% include "_icons.html" %}
 
 {% set path = request.url.path if request else "" %}
-{% macro navlink(href, name, label, match=None) -%}
-  {% set m = match or href %}
-  <a href="{{ href }}" class="{{ 'active' if (path == m or (m != '/' and path.startswith(m))) }}">
+{% macro navlink(href, name, label, extra="") -%}
+  {% set is_active = (path == href) or (href != '/' and path.startswith(href)) %}
+  <a href="{{ href }}" class="{{ 'active' if is_active }} {{ extra }}" title="{{ label }}">
     {{ icon(name) }}<span>{{ label }}</span>
   </a>
 {%- endmacro %}
+{% macro navitems() -%}
+  {{ navlink("/", "tasks", "Задания") }}
+  {{ navlink("/announcements", "megaphone", "Анонсы") }}
+  {{ navlink("/feed", "activity", "Лента") }}
+  {{ navlink("/leaderboard", "trophy", "Лидерборд") }}
+  {{ navlink("/accounts", "link", "Аккаунты") }}
+  {% if user.is_teacher %}{{ navlink("/teacher", "shield", "Жюри", "teacher-link") }}{% endif %}
+{%- endmacro %}
 
 {% if user %}
-<header class="top">
-  <div class="top-inner">
-    {# В шапке короткая форма: полное название клуба ломает строку рядом с меню.
-       Целиком оно есть на странице входа и в заголовке вкладки. #}
-    <a class="brand" href="/" title="{{ settings.app_name }}">
-      {% if brand_logo %}
-        <img class="brand-logo {{ 'only-light' if brand_logo_dark }}"
-             src="/static/{{ brand_logo }}?v={{ asset_version }}" alt="{{ settings.app_short_name }}">
-        {% if brand_logo_dark %}
-        <img class="brand-logo only-dark"
-             src="/static/{{ brand_logo_dark }}?v={{ asset_version }}" alt="">
-        {% endif %}
-      {% else %}
-        {{ icon("msu", "lg") }}
+{# Рейка слева: тёмная полоса на светлой бумаге. На телефоне становится нижней панелью. #}
+<aside class="rail">
+  <a class="brand" href="/" title="{{ settings.app_name }}">
+    {% if brand_mark %}
+      {# Знак-маска: окрашивается в цвет текста рейки, поэтому виден и на чёрном, и на жёлтом. #}
+      <span class="brand-mark" role="img" aria-label="{{ settings.app_short_name }}"
+            style="--mark: url('/static/{{ brand_mark }}?v={{ asset_version }}')"></span>
+    {% elif brand_logo %}
+      <img class="brand-logo {{ 'only-light' if brand_logo_dark }}"
+           src="/static/{{ brand_logo }}?v={{ asset_version }}" alt="{{ settings.app_short_name }}">
+      {% if brand_logo_dark %}
+      <img class="brand-logo only-dark" src="/static/{{ brand_logo_dark }}?v={{ asset_version }}" alt="">
       {% endif %}
-      <span>{{ settings.app_short_name }}</span>
+    {% else %}
+      {{ icon("msu", "xl") }}
+    {% endif %}
+    <span class="brand-text">{{ settings.app_short_name }}</span>
+  </a>
+  <nav class="nav">{{ navitems() }}</nav>
+  <div class="rail-foot">
+    <a class="whoami" href="/me" title="{{ user.display_name }} — профиль">
+      <span class="avatar" style="--h: {{ user.display_name | hue }}">{{ user.display_name | initials }}</span>
     </a>
-    <nav class="nav">
-      {{ navlink("/", "tasks", "Задания") }}
-      {{ navlink("/announcements", "megaphone", "Объявления") }}
-      {{ navlink("/feed", "activity", "Лента") }}
-      {{ navlink("/leaderboard", "trophy", "Лидерборд") }}
-      {{ navlink("/accounts", "link", "Аккаунты") }}
-      {% if user.is_teacher %}
-      <a href="/teacher" class="teacher-link {{ 'active' if path.startswith('/teacher') }}">
-        {{ icon("shield") }}<span>Преподавателю</span>
-      </a>
-      {% endif %}
-    </nav>
-    <div class="top-user">
-      <a class="whoami" href="/me">
-        <span class="avatar sm" style="--h: {{ user.display_name | hue }}">{{ user.display_name | initials }}</span>
-        <span class="name">{{ user.display_name }}</span>
-      </a>
-      <form method="post" action="/logout">
-        <button class="ghost small" type="submit" title="Выйти">{{ icon("logout") }}</button>
-      </form>
-    </div>
+    <button class="rail-btn" type="button" data-theme-toggle data-theme-state="light"
+              title="Тема: светлая">
+        {{ icon("sun", "t-light") }}{{ icon("moon", "t-dark") }}{{ icon("auto", "t-auto") }}
+      </button>
+    <form method="post" action="/logout">
+      <button class="rail-btn" type="submit" title="Выйти">{{ icon("logout") }}</button>
+    </form>
   </div>
-</header>
+</aside>
+
+<nav class="tabbar">{{ navitems() }}</nav>
 {% endif %}
 
-<main>
-  {% if ok %}<div class="flash ok">{{ icon("check") }}<span>{{ ok }}</span></div>{% endif %}
-  {% if error %}<div class="flash err">{{ icon("alert") }}<span>{{ error }}</span></div>{% endif %}
-  {% block content %}{% endblock %}
-</main>
+<div class="shell">
+  {% if user %}
+  {# На телефоне рейка скрыта — знак и имя клуба живут в компактной шапке. #}
+  <div class="mobile-bar">
+  <a class="mobile-brand" href="/" title="{{ settings.app_name }}">
+    {% if brand_mark %}
+      <span class="brand-mark small" role="img" aria-label=""
+            style="--mark: url('/static/{{ brand_mark }}?v={{ asset_version }}')"></span>
+    {% else %}
+      {{ icon("msu", "lg") }}
+    {% endif %}
+    <span>{{ settings.app_short_name }}</span>
+  </a>
+  <button class="rail-btn" type="button" data-theme-toggle data-theme-state="light"
+              title="Тема: светлая">
+        {{ icon("sun", "t-light") }}{{ icon("moon", "t-dark") }}{{ icon("auto", "t-auto") }}
+      </button>
+  </div>
+  {% endif %}
+  {% if user and ticker %}
+  {# Ближайшее событие — с любой страницы. #}
+  <a class="ticker" href="/announcements">
+    <span class="ticker-label">{{ "идёт" if ticker.state(now()) == "live" else "следующее" }}</span>
+    <span class="ticker-title">{{ ticker.title }}</span>
+    <span class="countdown" data-countdown data-state="{{ ticker.state(now()) }}"
+          data-start="{{ ticker.starts_at.isoformat() }}"
+          {% if ticker.ends_at %}data-end="{{ ticker.ends_at.isoformat() }}"{% endif %}>{{
+      "идёт сейчас" if ticker.state(now()) == "live" else "скоро" }}</span>
+    <span class="ticker-go">{{ icon("chevron") }}</span>
+  </a>
+  {% endif %}
+
+  <main>
+    {% if ok %}<div class="flash ok">{{ icon("check") }}<span>{{ ok }}</span></div>{% endif %}
+    {% if error %}<div class="flash err">{{ icon("alert") }}<span>{{ error }}</span></div>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
 <script src="/static/countdown.js?v={{ asset_version }}" defer></script>
+<script src="/static/theme.js?v={{ asset_version }}" defer></script>
+<script src="/static/telegram-login.js?v={{ asset_version }}" defer></script>
 </body>
 </html>

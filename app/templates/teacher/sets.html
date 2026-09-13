@@ -3,7 +3,7 @@
 {% block title %}Списки задач — {{ settings.app_name }}{% endblock %}
 {% block content %}
 <h1>Списки задач</h1>
-<p class="sub">Подборка задач, которую потом можно выдать как задание или использовать в ивенте.</p>
+<p class="sub">Подборка для задания или ивента.</p>
 
 <div class="card">
   <h3>{{ icon("plus") }} Новый список</h3>
@@ -23,9 +23,8 @@
       <textarea id="problems_text" name="problems_text" placeholder="two-sum&#10;lc:binary-search&#10;cf:1352G&#10;474B"></textarea>
     </div>
     <p class="small muted">
-      {{ icon("search") }} Понимаются ссылки, слаги LeetCode и коды Codeforces вида
-      <span class="mono">1352G</span>. Задача должна быть в каталоге — если нет,
-      обнови его на <a href="/teacher">панели</a>.
+      {{ icon("search") }} Ссылки, слаги LeetCode, коды Codeforces вида
+      <span class="mono">1352G</span>. Задачи ищутся в <a href="/teacher">каталоге</a>.
     </p>
     <button type="submit">{{ icon("plus") }} Создать</button>
   </form>

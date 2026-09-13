@@ -25,7 +25,21 @@ class Settings(BaseSettings):
     # Telegram
     telegram_bot_token: str = ""
     telegram_bot_username: str = ""
+    # Telegram id преподавателей через запятую. Id не меняется, в отличие от логина.
     teacher_telegram_ids: str = ""
+    # Чат или канал клуба для уведомлений (id вида -1001234567890). Пусто — не слать.
+    telegram_notify_chat_id: str = ""
+    # За сколько минут до старта события напоминать.
+    reminder_minutes_before: int = 60
+
+    # OpenID Connect (Authentik, Keycloak и любой другой провайдер с discovery).
+    oidc_issuer: str = ""            # https://auth.example.org/application/o/sport/
+    oidc_client_id: str = ""
+    oidc_client_secret: str = ""     # пусто — публичный клиент, только PKCE
+    oidc_scopes: str = "openid profile email"
+    oidc_provider_name: str = "Authentik"
+    oidc_groups_claim: str = "groups"
+    oidc_teacher_groups: str = ""    # группы провайдера, дающие роль преподавателя
 
     # Локальная разработка без Telegram.
     dev_login_enabled: bool = False
@@ -52,6 +66,19 @@ class Settings(BaseSettings):
     session_cookie: str = "sport_session"
 
     @property
+    def oidc_enabled(self) -> bool:
+        return bool(self.oidc_issuer.strip() and self.oidc_client_id.strip())
+
+    @property
+    def oidc_teacher_group_set(self) -> set[str]:
+        raw = self.oidc_teacher_groups.replace(";", ",").split(",")
+        return {g.strip() for g in raw if g.strip()}
+
+    @property
+    def oidc_redirect_uri(self) -> str:
+        return self.base_url.rstrip("/") + "/login/oidc/callback"
+
+    @property
     def secret_is_insecure(self) -> bool:
         return self.secret_key.strip() in {"", INSECURE_SECRET}
 
@@ -70,6 +97,7 @@ class Settings(BaseSettings):
                 except ValueError:
                     continue
         return out
+
 
     @property
     def telegram_login_url_template(self) -> str:

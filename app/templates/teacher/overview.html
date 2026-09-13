@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Преподавателю — {{ settings.app_name }}{% endblock %}
 {% block content %}
+<p class="eyebrow">жюри</p>
 <h1>Панель преподавателя</h1>
-<p class="sub">Всё управление курсом собрано здесь.</p>
+<p class="sub">Управление клубом.</p>
 
 {% if onboarding %}
 <h2>{{ icon("chevron") }} С чего начать</h2>
@@ -38,19 +39,17 @@
 <h2>{{ icon("layers") }} Разделы</h2>
 <div class="grid three">
   <a class="card" href="/teacher/groups"><h3>{{ icon("users") }} Группы</h3>
-    <p class="small muted" style="margin:0">Создать группу, выдать код, посмотреть состав</p></a>
+    <p class="small muted" style="margin:0">Код вступления и состав</p></a>
   <a class="card" href="/teacher/sets"><h3>{{ icon("layers") }} Списки задач</h3>
-    <p class="small muted" style="margin:0">Собрать подборку, вставив ссылки списком</p></a>
+    <p class="small muted" style="margin:0">Подборка задач из ссылок</p></a>
   <a class="card" href="/teacher/assignments"><h3>{{ icon("tasks") }} Задания</h3>
     <p class="small muted" style="margin:0">Выдать список группе и следить за матрицей решений</p></a>
   <a class="card" href="/teacher/events"><h3>{{ icon("calendar") }} Ивенты</h3>
-    <p class="small muted" style="margin:0">Субботний марафон с окном по времени</p></a>
+    <p class="small muted" style="margin:0">Марафон с окном по времени</p></a>
   <a class="card" href="/teacher/announcements"><h3>{{ icon("megaphone") }} Объявления</h3>
     <p class="small muted" style="margin:0">Анонс соревнования со ссылкой и обратным отсчётом</p></a>
   <a class="card" href="/teacher/students"><h3>{{ icon("user") }} Студенты</h3>
-    <p class="small muted" style="margin:0">Роли и ручные бонусы</p></a>
-  <a class="card" href="/teacher/problems"><h3>{{ icon("search") }} Поиск задач</h3>
-    <p class="small muted" style="margin:0">Найти задачу в каталоге по названию</p></a>
+    <p class="small muted" style="margin:0">Роли и бонусы</p></a>
 </div>
 
 <h2>{{ icon("database") }} Каталог задач</h2>
@@ -60,13 +59,14 @@
   </p>
   <p class="small muted">
     Обновлён {{ catalog_synced_at | ago if catalog_synced_at else "ещё ни разу" }}.
-    Каталог подтягивается сам раз в {{ settings.catalog_refresh_hours }} ч.
+    Обновляется сам раз в {{ settings.catalog_refresh_hours }} ч.
   </p>
   <div class="row">
     <form method="post" action="/teacher/catalog-refresh">
       <button class="ghost small" type="submit">{{ icon("database") }} Обновить каталог</button></form>
     <form method="post" action="/teacher/sync-now">
       <button class="ghost small" type="submit">{{ icon("refresh") }} Синхронизировать посылки</button></form>
+    <a class="btn ghost small" href="/teacher/problems">{{ icon("search") }} Поиск по каталогу</a>
     <a class="btn ghost small" href="/teacher/problems/unlinked">{{ icon("alert") }} Задачи вне каталога</a>
   </div>
 </div>

@@ -21,9 +21,9 @@
 <div class="card callout">
   <h3>{{ icon("trophy") }} Правила</h3>
   <p class="small" style="margin:0">
-    За каждую решённую задачу — <b>{{ event.points_per_problem | pts }}</b> баллов,
-    за полный комплект — ещё <b>{{ event.full_clear_bonus | pts }}</b>.
-    Засчитываются только решения, отправленные внутри окна ивента.
+    <b>{{ event.points_per_problem | pts }}</b> за задачу,
+    <b>{{ event.full_clear_bonus | pts }}</b> за полный комплект.
+    Считаются только решения внутри окна.
   </p>
 </div>
 

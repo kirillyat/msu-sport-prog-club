@@ -6,3 +6,13 @@ data/
 .pytest_cache/
 .ruff_cache/
 msu_sport.egg-info/
+
+# Базы и их резервные копии — это данные участников, не код.
+*.db
+*.db-shm
+*.db-wal
+sport-backup-*
+
+# Отчёты покрытия
+.coverage
+htmlcov/

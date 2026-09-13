@@ -11,6 +11,22 @@
   <a class="btn ghost small" href="/feed?group_id={{ group.id }}">{{ icon("activity") }} Лента группы</a>
 </div>
 
+<div class="card">
+  <h3>{{ icon("send") }} Telegram-чат группы</h3>
+  <p class="small muted" style="margin-top:0">
+    Объявления и задания группы уйдут сюда. Id чата подскажет бот по
+    <span class="mono">/id</span>. Пусто — шлём в общий чат клуба.
+  </p>
+  <form method="post" action="/teacher/groups/{{ group.id }}/chat" class="inline-form">
+    <div class="field" style="flex:1; min-width:220px;">
+      <label for="chat_id">Id чата</label>
+      <input type="text" id="chat_id" name="chat_id" value="{{ group.telegram_chat_id or '' }}"
+             placeholder="-1001234567890" autocomplete="off">
+    </div>
+    <button type="submit">{{ icon("check") }} Сохранить</button>
+  </form>
+</div>
+
 <h2>{{ icon("users") }} Состав ({{ members | length }})</h2>
 {% if members %}
 <div class="card table-wrap" style="padding:6px">

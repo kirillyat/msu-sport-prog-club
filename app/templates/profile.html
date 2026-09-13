@@ -16,6 +16,7 @@
 <div class="profile-head">
   <span class="avatar lg" style="--h: {{ target.display_name | hue }}">{{ target.display_name | initials }}</span>
   <div style="min-width:0; flex:1">
+    <p class="eyebrow">участник #{{ "%04d" % target.id }}</p>
     <h1 style="margin-bottom:4px">{{ target.display_name }}</h1>
     <div class="row small muted">
       {% if target.telegram_username %}<span>@{{ target.telegram_username }}</span>{% endif %}
@@ -172,8 +173,8 @@
 
 {% if is_self %}
 <p class="small muted">
-  Статистика строится по синхронизированным посылкам. Если чего-то не хватает —
-  нажми «Синхронизировать» на <a href="/accounts">странице аккаунтов</a>.
+  Статистика — по синхронизированным посылкам.
+  Чего-то не хватает? Нажми «Обновить результаты» выше.
 </p>
 {% endif %}
 {% endblock %}

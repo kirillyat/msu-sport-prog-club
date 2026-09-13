@@ -4,14 +4,15 @@
 {% from "_announce.html" import announce_card %}
 {% block title %}Задания — {{ settings.app_name }}{% endblock %}
 {% block content %}
+<p class="eyebrow">главная</p>
 <h1>Привет, {{ user.display_name }}</h1>
-<p class="sub">Твои задания и то, чем сейчас живёт клуб.</p>
+<p class="sub">Задания и жизнь клуба.</p>
 
 {% if missing_accounts %}
 <div class="card callout warn">
   <h3>{{ icon("link") }} Привяжи аккаунты</h3>
   <p class="small" style="margin:0 0 12px">
-    Без подтверждённого аккаунта решения не засчитываются. Не привязано:
+    Без них решения не засчитываются. Не привязано:
     {% for p in missing_accounts %}<span class="badge warn">{{ p.title }}</span> {% endfor %}
   </p>
   <a class="btn small" href="/accounts">{{ icon("plus") }} Привязать</a>
@@ -77,7 +78,7 @@
 {% else %}
 <div class="card flat">
   <p class="row small muted" style="margin:0">
-    {{ icon("inbox") }} Заданий пока нет. Вступи в группу по коду от преподавателя ↓
+    {{ icon("inbox") }} Заданий пока нет — вступи в группу по коду ↓
   </p>
 </div>
 {% endif %}

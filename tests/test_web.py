@@ -218,3 +218,18 @@ def test_startup_accepts_real_secret(monkeypatch):
     monkeypatch.setattr(settings, "secret_key", "a-real-generated-key")
     monkeypatch.setattr(settings, "allow_insecure_secret", False)
     check_startup_config()
+
+
+async def test_login_page_wires_telegram_script(session, client, monkeypatch):
+    """Вкладка t.me закрывается скриптом — разметка для него должна быть на месте."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "telegram_bot_token", "t")
+    monkeypatch.setattr(settings, "telegram_bot_username", "sport_bot")
+
+    page = await client.get("/login")
+    assert "data-tg-code=" in page.text
+    assert "data-tg-link" in page.text
+    assert "telegram-login.js" in page.text
+    # Инлайновых скриптов на странице не осталось — логика в одном файле.
+    assert "<script>" not in page.text.split("</head>", 1)[1]

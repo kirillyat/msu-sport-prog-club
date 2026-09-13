@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import mimetypes
 from collections.abc import AsyncIterator
 from urllib.parse import quote
 
@@ -16,6 +17,7 @@ from app.deps import Forbidden, RedirectToLogin
 from app.routers import accounts, announcements, auth, feed, leaderboard, student, teacher
 from app.scheduler import run_scheduler
 from app.templating import STATIC_DIR, templates
+from app.ticker import load_ticker
 
 logging.basicConfig(
     level=logging.INFO,
@@ -71,6 +73,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan, docs_url=None, redoc_url=None)
 
+# У стандартной таблицы MIME нет woff2 — без этого шрифт уходит как octet-stream.
+mimetypes.add_type("font/woff2", ".woff2")
+
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -81,6 +86,17 @@ app.include_router(announcements.router)
 app.include_router(feed.router)
 app.include_router(leaderboard.router)
 app.include_router(teacher.router)
+
+
+@app.middleware("http")
+async def attach_ticker(request: Request, call_next):
+    """Ближайшее событие для строки над страницей. Один лёгкий запрос к SQLite."""
+    try:
+        request.state.ticker = await load_ticker(request)
+    except Exception:  # строка — украшение, страницу из-за неё не роняем
+        logger.exception("не удалось собрать ticker")
+        request.state.ticker = None
+    return await call_next(request)
 
 
 @app.exception_handler(RedirectToLogin)

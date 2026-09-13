@@ -3,7 +3,7 @@
 {% block title %}Объявления — {{ settings.app_name }}{% endblock %}
 {% block content %}
 <h1>Объявления</h1>
-<p class="sub">Анонс соревнования со ссылкой и обратным отсчётом — или просто новость клуба.</p>
+<p class="sub">Анонс соревнования с отсчётом или новость клуба.</p>
 
 <div class="card">
   <h3>{{ icon("megaphone") }} Новое объявление</h3>
@@ -65,7 +65,7 @@
         <td class="small muted">{{ item.group.title if item.group else "весь клуб" }}</td>
         <td class="small muted">{{ item.starts_at | dt if item.starts_at else item.created_at | ago }}</td>
         <td>
-          {% set state = item.state(now) %}
+          {% set state = item.state(now_ts) %}
           {% if state == "live" %}<span class="badge ok">{{ icon("flame") }} идёт</span>
           {% elif state == "upcoming" %}<span class="badge warn">{{ icon("clock") }} скоро</span>
           {% elif state == "past" %}<span class="badge">прошло</span>

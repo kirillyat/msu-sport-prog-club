@@ -3,7 +3,7 @@
 {% block title %}Задания — {{ settings.app_name }}{% endblock %}
 {% block content %}
 <h1>Задания</h1>
-<p class="sub">Выдай список задач группе. Засчитываются решения, сделанные после момента выдачи.</p>
+<p class="sub">Список задач для группы. Считаются решения после выдачи.</p>
 
 <div class="card">
   <h3>{{ icon("plus") }} Новое задание</h3>
@@ -39,7 +39,7 @@
     <div class="field">
       <label class="check">
         <input type="checkbox" name="count_prior_solves" value="true">
-        засчитывать задачи, решённые до выдачи задания
+        засчитывать решённое до выдачи
       </label>
     </div>
     <button type="submit">{{ icon("send") }} Выдать</button>
@@ -75,6 +75,6 @@
   </table>
 </div>
 {% else %}
-<div class="card">{{ empty("tasks", "Заданий пока нет. Выдай первое — и здесь появится матрица решений.") }}</div>
+<div class="card">{{ empty("tasks", "Заданий пока нет — выдай первое в форме выше.") }}</div>
 {% endif %}
 {% endblock %}

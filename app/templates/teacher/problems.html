@@ -3,7 +3,7 @@
 {% block title %}Поиск задач — {{ settings.app_name }}{% endblock %}
 {% block content %}
 <h1>Каталог задач</h1>
-<p class="sub">Найди задачу и скопируй её идентификатор в список.</p>
+<p class="sub">Найди задачу и скопируй идентификатор.</p>
 
 <div class="card">
   <form method="get" action="/teacher/problems" class="inline-form">
@@ -43,6 +43,6 @@
   </table>
 </div>
 {% else %}
-<div class="card">{{ empty("search", "Ничего не найдено — попробуй другое слово." if q else "Введи название, слаг или код задачи.") }}</div>
+<div class="card">{{ empty("search", "Ничего не найдено." if q else "Введи название, слаг или код.") }}</div>
 {% endif %}
 {% endblock %}

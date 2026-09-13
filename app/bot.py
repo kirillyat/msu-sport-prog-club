@@ -115,7 +115,12 @@ async def _handle_update(api: TelegramAPI, update: dict) -> None:
         return
 
     if text.startswith("/id"):
-        await api.send_message(chat_id, f"Твой telegram id: <code>{sender['id']}</code>")
+        lines = [f"Твой telegram id: <code>{sender['id']}</code>"]
+        if (message.get("chat") or {}).get("type") != "private":
+            lines.append(
+                f"Id этого чата: <code>{chat_id}</code> — впиши его в настройках группы на портале."
+            )
+        await api.send_message(chat_id, "\n".join(lines))
 
 
 async def run_bot(stop_event: asyncio.Event) -> None:

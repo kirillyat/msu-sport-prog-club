@@ -3,10 +3,52 @@
 {% block content %}
 <h1>Аккаунты платформ</h1>
 <p class="sub">
-  Портал читает только публичные данные. Пароли и токены не запрашиваются и не хранятся —
-  достаточно подтвердить, что профиль твой.
+  Только публичные данные: пароли и токены не нужны.
 </p>
 
+<h2>{{ icon("shield") }} Способы входа</h2>
+<div class="grid two">
+  <div class="card stretch">
+    <div class="row between">
+      <h3>{{ icon("send") }} Telegram</h3>
+      {% if user.telegram_id %}<span class="badge ok">{{ icon("check") }} привязан</span>
+      {% else %}<span class="badge">не привязан</span>{% endif %}
+    </div>
+    {% if user.telegram_id %}
+      <p class="small">{% if user.telegram_username %}@{{ user.telegram_username }}{% else %}id {{ user.telegram_id }}{% endif %}</p>
+      <p class="small muted">Вход и уведомления о заданиях.</p>
+      <form method="post" action="/accounts/telegram/unlink" class="push-bottom">
+        <button class="danger small" type="submit">{{ icon("trash") }} Отвязать</button>
+      </form>
+    {% else %}
+      <p class="small muted">Добавит вход через бота и уведомления.</p>
+      <a class="btn small push-bottom" href="/login/telegram/link">{{ icon("link") }} Привязать</a>
+    {% endif %}
+  </div>
+
+  <div class="card stretch">
+    <div class="row between">
+      <h3>{{ icon("shield") }} {{ settings.oidc_provider_name }}</h3>
+      {% if user.oidc_sub %}<span class="badge ok">{{ icon("check") }} привязан</span>
+      {% elif settings.oidc_enabled %}<span class="badge">не привязан</span>
+      {% else %}<span class="badge">не настроен</span>{% endif %}
+    </div>
+    {% if user.oidc_sub %}
+      <p class="small">{{ user.email or "единый аккаунт факультета" }}</p>
+      <p class="small muted">Вход по учётной записи факультета.</p>
+      <form method="post" action="/accounts/oidc/unlink" class="push-bottom">
+        <button class="danger small" type="submit">{{ icon("trash") }} Отвязать</button>
+      </form>
+    {% elif settings.oidc_enabled %}
+      <p class="small muted">Добавит вход по учётной записи факультета.</p>
+      <a class="btn small push-bottom" href="/login/oidc?link=1">{{ icon("link") }} Привязать</a>
+    {% else %}
+      <p class="small muted">Не настроен на этом портале.</p>
+    {% endif %}
+  </div>
+</div>
+
+<h2>{{ icon("code") }} Аккаунты платформ</h2>
 <div class="grid two">
 {% for platform in platforms %}
   {% set account = user.account_for(platform) %}
@@ -30,8 +72,8 @@
         </p>
         {% if platform.value == "leetcode" %}
         <p class="small muted" style="margin-top:0">
-          Публично LeetCode отдаёт последние 20 принятых решений. Синк идёт каждые
-          {{ settings.sync_interval_seconds // 60 }} мин — этого хватает.
+          LeetCode отдаёт публично последние 20 решений. Синк — каждые
+          {{ settings.sync_interval_seconds // 60 }} мин, этого хватает.
         </p>
         {% endif %}
         {% if account.last_sync_error %}
@@ -58,14 +100,14 @@
             <button class="danger small" type="submit">Отменить</button>
           </form>
         </div>
-        <p class="small muted" style="margin-bottom:0">После подтверждения код можно убрать из профиля.</p>
+        <p class="small muted" style="margin-bottom:0">Потом код можно убрать.</p>
       {% endif %}
     {% else %}
       <p class="small muted" style="margin:6px 0 0">
         {% if platform.value == "codeforces" %}
-          Хэндл — то, что стоит в адресе профиля: codeforces.com/profile/<b>tourist</b>
+          Как в адресе профиля: codeforces.com/profile/<b>tourist</b>
         {% else %}
-          Username — то, что стоит в адресе профиля: leetcode.com/u/<b>lee215</b>
+          Как в адресе профиля: leetcode.com/u/<b>lee215</b>
         {% endif %}
       </p>
       <form method="post" action="/accounts/link" class="inline-form push-bottom">

@@ -27,6 +27,8 @@ def asset_version() -> str:
 LOGO_NAMES = ("logo.svg", "logo.png", "logo.webp")
 LOGO_DARK_NAMES = ("logo-dark.svg", "logo-dark.png", "logo-dark.webp")
 FAVICON_NAMES = ("favicon.png", "favicon.svg", "favicon.ico", *LOGO_NAMES)
+# Компактный знак для рейки. Рисуется CSS-маской в цвет текста рейки — цвет файла не важен.
+MARK_NAMES = ("mark.svg", "mark.png")
 
 
 def _find_asset(names: tuple[str, ...]) -> str | None:
@@ -34,7 +36,9 @@ def _find_asset(names: tuple[str, ...]) -> str | None:
         if (STATIC_DIR / name).is_file():
             return name
     return None
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+from app.ticker import ticker_context  # noqa: E402
+
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR), context_processors=[ticker_context])
 
 try:
     LOCAL_TZ = ZoneInfo(settings.display_timezone)
@@ -182,6 +186,7 @@ templates.env.globals["asset_version"] = asset_version()
 templates.env.globals["brand_logo"] = _find_asset(LOGO_NAMES)
 templates.env.globals["brand_logo_dark"] = _find_asset(LOGO_DARK_NAMES)
 templates.env.globals["favicon_asset"] = _find_asset(FAVICON_NAMES)
+templates.env.globals["brand_mark"] = _find_asset(MARK_NAMES)
 templates.env.globals["settings"] = settings
 templates.env.globals["SolveStatus"] = SolveStatus
 templates.env.globals["now"] = lambda: datetime.now(UTC)

@@ -2,7 +2,13 @@
 {% block title %}Вход — {{ settings.app_name }}{% endblock %}
 {% block content %}
 <div class="auth-shell">
-  {% if brand_logo %}
+  {% if brand_mark %}
+  {# Только знак: название клуба на этой странице и так стоит заголовком. #}
+  <div class="auth-logo bare">
+    <span class="brand-mark auth-mark" role="img" aria-label="{{ settings.app_short_name }}"
+          style="--mark: url('/static/{{ brand_mark }}?v={{ asset_version }}')"></span>
+  </div>
+  {% elif brand_logo %}
   <div class="auth-logo bare">
     <img class="{{ 'only-light' if brand_logo_dark }}"
          src="/static/{{ brand_logo }}?v={{ asset_version }}" alt="{{ settings.app_name }}">
@@ -15,24 +21,23 @@
   {% endif %}
   <h1>{{ settings.app_name }}</h1>
   <p class="sub">
-    Тренировки, задания и рейтинг клуба. Решения с LeetCode и Codeforces
-    подтягиваются сами — достаточно один раз привязать аккаунт.
+    Тренировки, задания и рейтинг. Решения с LeetCode и Codeforces
+    подтягиваются сами.
   </p>
 
   {% if error %}<div class="flash err">{{ icon("alert") }}<span>{{ error }}</span></div>{% endif %}
 
   {% if deep_link %}
-  <div class="card">
+  <div class="card" data-tg-code="{{ code }}">
     <h3>{{ icon("send") }} Вход через Telegram</h3>
     <p class="small muted">
-      Нажми кнопку — откроется чат с ботом, где нужно отправить <code class="mono">/start</code>.
-      После подтверждения эта страница откроется сама.
+      Отправь боту <code class="mono">/start</code> — страница откроется сама.
     </p>
-    <p><a class="btn" href="{{ deep_link }}" target="_blank" rel="noopener">
+    <p><a class="btn" href="{{ deep_link }}" target="_blank" rel="noopener" data-tg-link>
       {{ icon("send") }} Войти через Telegram</a></p>
     <div class="row small muted">
       {{ icon("clock") }}
-      <span id="status">Ждём подтверждения… код живёт {{ settings.login_code_ttl_seconds // 60 }} минут.</span>
+      <span id="tg-status">Ждём подтверждения… код живёт {{ settings.login_code_ttl_seconds // 60 }} минут.</span>
     </div>
   </div>
   {% else %}
@@ -45,10 +50,18 @@
   </div>
   {% endif %}
 
+  {% if oidc_enabled %}
+  <div class="card">
+    <h3>{{ icon("shield") }} Вход через {{ oidc_name }}</h3>
+    <p class="small muted">Единый аккаунт факультета. Роль — по группе в {{ oidc_name }}.</p>
+    <a class="btn" href="/login/oidc?next={{ next | urlencode }}">{{ icon("shield") }} Войти через {{ oidc_name }}</a>
+  </div>
+  {% endif %}
+
   {% if dev_login %}
   <div class="card">
     <h3>{{ icon("user") }} Локальный вход <span class="badge warn">dev</span></h3>
-    <p class="small muted">Работает только при <code class="mono">DEV_LOGIN_ENABLED=true</code>. Не включай в проде.</p>
+    <p class="small muted">Только для разработки: <code class="mono">DEV_LOGIN_ENABLED=true</code>.</p>
     <form method="post" action="/login/dev">
       <div class="field">
         <label for="name">Имя</label>
@@ -63,23 +76,4 @@
   {% endif %}
 </div>
 
-{% if code %}
-<script>
-  const code = {{ code | tojson }};
-  const statusEl = document.getElementById("status");
-  let tries = 0;
-  const timer = setInterval(async () => {
-    if (++tries > 150) { clearInterval(timer); statusEl.textContent = "Код истёк — обнови страницу."; return; }
-    try {
-      const res = await fetch(`/login/status/${encodeURIComponent(code)}`);
-      const data = await res.json();
-      if (data.state === "confirmed") { clearInterval(timer); window.location = data.next; }
-      else if (data.state === "expired" || data.state === "unknown") {
-        clearInterval(timer);
-        statusEl.textContent = "Код истёк — обнови страницу.";
-      }
-    } catch (e) { /* сеть моргнула — попробуем на следующем тике */ }
-  }, 2000);
-</script>
-{% endif %}
 {% endblock %}

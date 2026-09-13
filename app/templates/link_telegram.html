@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Привязка Telegram — {{ settings.app_name }}{% endblock %}
+{% block content %}
+<p class="eyebrow">привязка</p>
+<h1>Telegram</h1>
+<p class="sub">Вход и уведомления через бота. Аккаунт на портале останется тем же.</p>
+
+<div class="card" style="max-width:520px" data-tg-code="{{ code }}"
+     data-tg-expired="Код истёк — начни заново.">
+  <p class="small muted" style="margin-top:0">Отправь боту <code class="mono">/start</code> — страница вернётся сама.</p>
+  <p><a class="btn" href="{{ deep_link }}" target="_blank" rel="noopener" data-tg-link>
+    {{ icon("send") }} Открыть бота</a></p>
+  <div class="row small muted">
+    {{ icon("clock") }}<span id="tg-status">Ждём подтверждения… код живёт {{ settings.login_code_ttl_seconds // 60 }} минут.</span>
+  </div>
+  <hr class="divider">
+  <a class="small" href="/accounts">Отмена</a>
+</div>
+
+{% endblock %}

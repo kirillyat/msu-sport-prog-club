@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from app.config import settings
 from app.db import SessionLocal
 from app.models import utcnow
+from app.notify import send_due_reminders
 from app.services.catalog import get_state, sync_catalog
 from app.services.sync import relink_orphan_submissions, sync_all
 
@@ -41,6 +42,9 @@ async def run_once() -> None:
         added = await sync_all(session)
         if added:
             logger.info("новых посылок: %s", added)
+        reminded = await send_due_reminders(session)
+        if reminded:
+            logger.info("отправлено напоминаний: %s", reminded)
 
 
 async def run_scheduler(stop_event: asyncio.Event) -> None:

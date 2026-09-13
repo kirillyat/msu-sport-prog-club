@@ -4,20 +4,21 @@
 {% block content %}
 <div class="page-head">
   <div>
+    <p class="eyebrow">табло</p>
     <h1>Лидерборд</h1>
     <p class="sub" style="margin-bottom:8px">
       {% if my_place and rows | length > 1 %}Твоё место — <strong>{{ my_place }}</strong> из {{ rows | length }}.{% endif %}
-      Баллы начисляются за задачи из заданий и клубных ивентов.
+      За задачи из заданий и ивентов.
     </p>
     <details class="formula">
       <summary>Как считаются баллы</summary>
       <ul>
         <li>LeetCode: Easy — 1, Medium — 3, Hard — 5 баллов.</li>
-        <li>Codeforces: рейтинг задачи делится на 200 (задача 1600 → 8 баллов).</li>
+        <li>Codeforces: рейтинг ÷ 200 (задача 1600 → 8 баллов).</li>
         <li>Решено после дедлайна — половина баллов.</li>
-        <li>Первым в группе решил задачу — плюс 2.</li>
-        <li>Закрыл всё задание целиком — плюс 5.</li>
-        <li>Задачи, решённые до выдачи задания, не засчитываются.</li>
+        <li>Первым в группе — плюс 2.</li>
+        <li>Задание целиком — плюс 5.</li>
+        <li>Решённое до выдачи задания не считается.</li>
       </ul>
     </details>
   </div>
