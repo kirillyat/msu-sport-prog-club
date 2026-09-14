@@ -4,6 +4,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 
+from app.access import is_confirmed
 from app.config import settings
 from app.deps import CurrentUser, SessionDep
 from app.models import Platform, PlatformAccount
@@ -31,6 +32,7 @@ async def accounts_page(request: Request, user: CurrentUser):
         "accounts.html",
         {
             "user": user,
+            "confirmed": is_confirmed(user),
             "platforms": list(Platform),
             "where_to_put": verification.WHERE_TO_PUT,
             "ok": request.query_params.get("ok"),
@@ -39,17 +41,16 @@ async def accounts_page(request: Request, user: CurrentUser):
     )
 
 
-def _login_methods(user) -> int:
-    """Сколько способов входа осталось. Последний отвязывать нельзя."""
-    return sum(1 for value in (user.telegram_id, user.oidc_sub) if value)
-
-
 @router.post("/telegram/unlink")
 async def unlink_telegram(session: SessionDep, user: CurrentUser):
+    """Отвязать Telegram можно, только когда вход остаётся по учётной записи вуза."""
     if user.telegram_id is None:
         return _back(error="Telegram не привязан")
-    if _login_methods(user) < 2:
-        return _back(error="Это единственный способ входа — сначала привяжи другой")
+    if user.oidc_sub is None:
+        return _back(
+            error=f"Сначала привяжи {settings.oidc_provider_name} — "
+            "иначе входить будет нечем"
+        )
     user.telegram_id = None
     user.telegram_username = None
     await session.commit()
@@ -58,13 +59,16 @@ async def unlink_telegram(session: SessionDep, user: CurrentUser):
 
 @router.post("/oidc/unlink")
 async def unlink_oidc(session: SessionDep, user: CurrentUser):
+    """Учётная запись вуза не отвязывается: она и есть подтверждение студенчества.
+
+    Отвязали бы — человек остался бы в группах, перестав быть подтверждённым.
+    """
     if user.oidc_sub is None:
         return _back(error=f"{settings.oidc_provider_name} не привязан")
-    if _login_methods(user) < 2:
-        return _back(error="Это единственный способ входа — сначала привяжи другой")
-    user.oidc_sub = None
-    await session.commit()
-    return _back(message=f"{settings.oidc_provider_name} отвязан")
+    return _back(
+        error=f"{settings.oidc_provider_name} подтверждает, что ты студент МГУ — "
+        "отвязать нельзя"
+    )
 
 
 @router.post("/link")

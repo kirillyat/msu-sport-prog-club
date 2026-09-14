@@ -6,6 +6,17 @@
   Только публичные данные: пароли и токены не нужны.
 </p>
 
+{% if not confirmed %}
+<div class="card callout warn">
+  <h3>{{ icon("shield") }} Студенчество не подтверждено</h3>
+  <p class="small" style="margin:0 0 12px">
+    Вступление в группы и задания клуба откроются после входа
+    через {{ settings.oidc_provider_name }}.
+  </p>
+  <a class="btn small" href="/login/oidc?link=1">{{ icon("shield") }} Подтвердить</a>
+</div>
+{% endif %}
+
 <h2>{{ icon("shield") }} Способы входа</h2>
 <div class="grid two">
   <div class="card stretch">
@@ -17,9 +28,15 @@
     {% if user.telegram_id %}
       <p class="small">{% if user.telegram_username %}@{{ user.telegram_username }}{% else %}id {{ user.telegram_id }}{% endif %}</p>
       <p class="small muted">Вход и уведомления о заданиях.</p>
+      {% if user.oidc_sub %}
       <form method="post" action="/accounts/telegram/unlink" class="push-bottom">
         <button class="danger small" type="submit">{{ icon("trash") }} Отвязать</button>
       </form>
+      {% else %}
+      <p class="small muted push-bottom">
+        Единственный вход — отвязать можно после {{ settings.oidc_provider_name }}.
+      </p>
+      {% endif %}
     {% else %}
       <p class="small muted">Добавит вход через бота и уведомления.</p>
       <a class="btn small push-bottom" href="/login/telegram/link">{{ icon("link") }} Привязать</a>
@@ -36,9 +53,9 @@
     {% if user.oidc_sub %}
       <p class="small">{{ user.email or "единый аккаунт факультета" }}</p>
       <p class="small muted">Вход по учётной записи факультета.</p>
-      <form method="post" action="/accounts/oidc/unlink" class="push-bottom">
-        <button class="danger small" type="submit">{{ icon("trash") }} Отвязать</button>
-      </form>
+      <p class="small muted push-bottom">
+        Подтверждает, что ты студент МГУ, — отвязать нельзя.
+      </p>
     {% elif settings.oidc_enabled %}
       <p class="small muted">Добавит вход по учётной записи факультета.</p>
       <a class="btn small push-bottom" href="/login/oidc?link=1">{{ icon("link") }} Привязать</a>

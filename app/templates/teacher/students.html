@@ -9,7 +9,7 @@
 <div class="card table-wrap" style="padding:6px">
   <table>
     <thead>
-      <tr><th>Имя</th><th>Роль</th><th>Аккаунты</th><th>Решено задач</th><th>Бонусы</th><th>Начислить</th></tr>
+      <tr><th>Имя</th><th>Роль</th><th>Аккаунты</th><th>Студент</th><th>Решено задач</th><th>Бонусы</th><th>Начислить</th></tr>
     </thead>
     <tbody>
     {% for student in students %}
@@ -35,6 +35,11 @@
           {% for account in student.accounts %}
             <span class="badge {{ 'ok' if account.is_verified else 'warn' }}">{{ account.platform.title }}</span>
           {% else %}<span class="muted">—</span>{% endfor %}
+        </td>
+        <td>
+          {% if student.is_teacher %}<span class="muted">—</span>
+          {% elif student.oidc_sub %}<span class="badge ok">{{ icon("check") }} МГУ</span>
+          {% else %}<span class="badge warn" title="вход только через Telegram">не подтверждён</span>{% endif %}
         </td>
         <td class="num">{{ solved.get(student.id, 0) }}</td>
         <td class="num">{{ bonuses.get(student.id, 0) | pts }}</td>

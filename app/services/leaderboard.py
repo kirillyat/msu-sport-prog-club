@@ -16,6 +16,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.access import confirmed_clause
 from app.models import (
     Assignment,
     BonusPoint,
@@ -80,8 +81,13 @@ async def _group_member_ids(session: AsyncSession, group_id: int) -> set[int]:
 
 
 async def _users_in_scope(session: AsyncSession, group_id: int | None) -> list[User]:
-    """Преподаватели вне рейтинга: они выдают задания, а не соревнуются."""
-    stmt = select(User).where(User.is_active.is_(True), User.role != Role.teacher)
+    """Преподаватели вне рейтинга: они выдают задания, а не соревнуются.
+
+    Неподтверждённые тоже: пока вуз не подтверждён, человек в клуб не вступил.
+    """
+    stmt = select(User).where(
+        User.is_active.is_(True), User.role != Role.teacher, confirmed_clause()
+    )
     if group_id is not None:
         stmt = stmt.join(GroupMembership, GroupMembership.user_id == User.id).where(
             GroupMembership.group_id == group_id

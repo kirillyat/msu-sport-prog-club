@@ -136,16 +136,31 @@ async def test_oidc_links_to_existing_account(session, client, provider):
     assert await session.scalar(select(func.count()).select_from(User)) == 1
 
 
-async def test_cannot_unlink_last_login_method(session, client):
+async def test_telegram_stays_until_the_university_account_is_linked(session, client):
     await _dev_login(client, "Аня", teacher=True)
     user = await session.scalar(select(User).where(User.display_name == "Аня"))
     user.telegram_id = 555
     await session.commit()
 
     response = await client.post("/accounts/telegram/unlink")
-    assert "единственный способ входа" in response.text
+    assert "входить будет нечем" in response.text
     await session.refresh(user)
     assert user.telegram_id == 555
+
+
+async def test_university_account_cannot_be_unlinked(session, client):
+    """Она и есть подтверждение студенчества: отвязали бы — человек остался
+    бы в группах, перестав быть подтверждённым."""
+    await _dev_login(client, "Аня", teacher=True)
+    user = await session.scalar(select(User).where(User.display_name == "Аня"))
+    user.telegram_id = 555
+    user.oidc_sub = "ak-1"
+    await session.commit()
+
+    response = await client.post("/accounts/oidc/unlink")
+    assert "отвязать нельзя" in response.text
+    await session.refresh(user)
+    assert user.oidc_sub == "ak-1"
 
 
 async def test_unlink_works_when_another_method_remains(session, client):
@@ -167,3 +182,56 @@ async def test_accounts_page_shows_both_methods(session, client):
     page = await client.get("/accounts")
     assert "Способы входа" in page.text
     assert "/login/telegram/link" in page.text
+
+
+async def test_unconfirmed_user_cannot_join_a_group(session, client, monkeypatch):
+    """Telegram подтверждает только Telegram. Группа — после учётной записи вуза."""
+    from app.config import settings
+    from app.models import Group, GroupMembership, Role
+
+    monkeypatch.setattr(settings, "oidc_issuer", "https://id.example/application/o/sp/")
+    monkeypatch.setattr(settings, "oidc_client_id", "portal")
+
+    await _dev_login(client, "Аня")
+    user = await session.scalar(select(User).where(User.display_name == "Аня"))
+    user.role = Role.student
+    user.telegram_id = 555
+    group = Group(title="Осень", join_code="JOIN01")
+    session.add(group)
+    await session.commit()
+
+    denied = await client.post("/groups/join", data={"join_code": "JOIN01"})
+    assert "подтверди студенчество" in denied.text.lower()
+    assert await session.scalar(select(func.count()).select_from(GroupMembership)) == 0
+
+    user.oidc_sub = "ak-9"
+    await session.commit()
+    allowed = await client.post("/groups/join", data={"join_code": "JOIN01"})
+    assert "Ты в группе" in allowed.text
+    assert await session.scalar(select(func.count()).select_from(GroupMembership)) == 1
+
+
+async def test_unconfirmed_user_is_not_a_club_member(session, client, monkeypatch):
+    """Ни на табло, ни в клубном задании: в клуб он ещё не вступил."""
+    from app.config import settings
+    from app.models import Assignment, ProblemSet, Role
+    from app.services.leaderboard import build_leaderboard
+    from app.services.progress import participants_for_assignment
+
+    monkeypatch.setattr(settings, "oidc_issuer", "https://id.example/application/o/sp/")
+    monkeypatch.setattr(settings, "oidc_client_id", "portal")
+
+    confirmed = User(display_name="Аня", role=Role.student, oidc_sub="ak-1")
+    guest = User(display_name="Гость", role=Role.student, telegram_id=777)
+    problem_set = ProblemSet(title="Список")
+    session.add_all([confirmed, guest, problem_set])
+    await session.commit()
+    assignment = Assignment(title="Всем", problem_set_id=problem_set.id)
+    session.add(assignment)
+    await session.commit()
+
+    assert [u.display_name for u in await participants_for_assignment(session, assignment)] == [
+        "Аня"
+    ]
+    rows = await build_leaderboard(session)
+    assert [r.user.display_name for r in rows] == ["Аня"]

@@ -7,6 +7,8 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
 
+from app.access import is_confirmed
+from app.config import settings
 from app.deps import CurrentUser, SessionDep
 from app.models import Assignment, Group, GroupMembership, Platform, User, utcnow
 from app.routers.announcements import upcoming_for_dashboard
@@ -62,6 +64,7 @@ async def dashboard(request: Request, session: SessionDep, user: CurrentUser):
             "announcements": await upcoming_for_dashboard(session, user),
             "groups": groups,
             "missing_accounts": missing_accounts,
+            "confirmed": is_confirmed(user),
             "ok": request.query_params.get("ok"),
             "error": request.query_params.get("err"),
         },
@@ -264,6 +267,13 @@ async def set_gravatar(
 
 @router.post("/groups/join")
 async def join_group(session: SessionDep, user: CurrentUser, join_code: str = Form(...)):
+    if not is_confirmed(user):
+        return RedirectResponse(
+            "/?err=" + quote(
+                f"Сначала подтверди студенчество через {settings.oidc_provider_name}"
+            ),
+            status_code=303,
+        )
     code = join_code.strip()
     group = await session.scalar(select(Group).where(Group.join_code == code))
     if group is None or group.is_archived:

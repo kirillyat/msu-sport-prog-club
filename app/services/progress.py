@@ -6,12 +6,14 @@ from datetime import datetime
 from sqlalchemy import Select, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.access import confirmed_clause
 from app.models import (
     Assignment,
     Group,
     GroupMembership,
     Problem,
     ProblemSetItem,
+    Role,
     SolveStatus,
     Submission,
     User,
@@ -89,7 +91,10 @@ async def participants_for_assignment(session: AsyncSession, assignment: Assignm
         stmt = stmt.join(GroupMembership, GroupMembership.user_id == User.id).where(
             GroupMembership.group_id == assignment.group_id
         )
-    # Иначе задание для всего клуба — участвуют все.
+    else:
+        # Задание всему клубу: студенты, подтвердившие вуз. Преподаватель его выдал,
+        # а не получил, и в матрице ему делать нечего.
+        stmt = stmt.where(User.role != Role.teacher, confirmed_clause())
     return list((await session.execute(stmt.order_by(User.display_name))).scalars().all())
 
 

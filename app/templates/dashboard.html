@@ -8,6 +8,17 @@
 <h1>Привет, {{ user.display_name }}</h1>
 <p class="sub">Задания и жизнь клуба.</p>
 
+{% if not confirmed %}
+<div class="card callout warn">
+  <h3>{{ icon("shield") }} Подтверди, что ты студент МГУ</h3>
+  <p class="small" style="margin:0 0 12px">
+    Вход через {{ settings.oidc_provider_name }} открывает вступление в группы
+    и задания клуба. Telegram остаётся для входа и уведомлений.
+  </p>
+  <a class="btn small" href="/login/oidc?link=1">{{ icon("shield") }} Войти через {{ settings.oidc_provider_name }}</a>
+</div>
+{% endif %}
+
 {% if missing_accounts %}
 <div class="card callout warn">
   <h3>{{ icon("link") }} Привяжи аккаунты</h3>
@@ -72,6 +83,7 @@
       {% else %}
         <p class="small muted" style="margin-top:0">Ты пока не состоишь ни в одной группе.</p>
       {% endif %}
+      {% if confirmed %}
       <form method="post" action="/groups/join" class="inline-form">
         <div class="field" style="flex:1; min-width: 180px;">
           <label for="join_code">Код группы</label>
@@ -80,6 +92,13 @@
         </div>
         <button type="submit">{{ icon("plus") }} Вступить</button>
       </form>
+      {% else %}
+      <p class="small muted">
+        Вступить в группу можно после входа по учётной записи факультета —
+        так портал знает, что ты студент МГУ.
+      </p>
+      <a class="btn small" href="/accounts">{{ icon("shield") }} Подтвердить</a>
+      {% endif %}
     </div>
   </div>
 
