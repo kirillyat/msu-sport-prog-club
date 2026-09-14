@@ -29,7 +29,8 @@ from app.models import (
     User,
     utcnow,
 )
-from app.templating import fmt_dt
+from app.services.progress import compute_progress, participants_for_assignment
+from app.templating import fmt_dt, plural_ru
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,27 @@ async def send_many(chat_ids: Iterable[str | int], text: str) -> int:
 
 async def send(chat_id: str | int, text: str) -> bool:
     return await send_many([chat_id], text) > 0
+
+
+async def send_each(messages: Iterable[tuple[str | int, str]]) -> int:
+    """Каждому свой текст — одним клиентом. Так рассылаются напоминания:
+    в них у каждого свои цифры, общим сообщением не обойтись."""
+    items = list(messages)
+    if not items or not settings.telegram_bot_token:
+        return 0
+    api = TelegramAPI(settings.telegram_bot_token)
+    sent = 0
+    try:
+        for chat_id, text in items:
+            result = await api.call(
+                "sendMessage", chat_id=chat_id, text=text, parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
+            if result is not None:
+                sent += 1
+    finally:
+        await api.close()
+    return sent
 
 
 async def _targets(
@@ -236,6 +258,55 @@ async def notify_assignment(
         session, assignment_text(item, problems),
         group_id=item.group_id, user_id=item.user_id,
     )
+
+
+def deadline_reminder_text(item: Assignment, left: int, total: int) -> str:
+    hours = max(1, round((item.deadline - utcnow()).total_seconds() / 3600))
+    lines = [
+        f"⏰ Через {hours} {plural_ru(hours, 'час', 'часа', 'часов')} дедлайн: "
+        f"<b>{_e(item.title)}</b>",
+        f"Осталось задач: {left} из {total}",
+        f"Срок: {fmt_dt(item.deadline)}",
+    ]
+    if item.hard_deadline:
+        lines.append("После срока решения не засчитываются.")
+    base = settings.base_url.rstrip("/")
+    lines.append(f'<a href="{_e(base)}/assignments/{item.id}">Открыть задание</a>')
+    return "\n".join(lines)
+
+
+async def send_deadline_reminders(session: AsyncSession) -> int:
+    """Личное напоминание тем, кто не закрыл задание. Кто закрыл — не трогаем.
+
+    Всегда лично: в напоминании у каждого свои цифры, в общий чат такое
+    не отправишь.
+    """
+    now = utcnow()
+    horizon = now + timedelta(hours=settings.assignment_reminder_hours)
+    stmt = select(Assignment).where(
+        Assignment.deadline.is_not(None),
+        Assignment.deadline > now,
+        Assignment.deadline <= horizon,
+        Assignment.reminded_at.is_(None),
+    )
+    messages: list[tuple[str | int, str]] = []
+    for assignment in (await session.execute(stmt)).scalars().all():
+        # Отмечаем в любом случае: иначе каждый круг будем перебирать одно и то же.
+        assignment.reminded_at = now
+        participants = await participants_for_assignment(session, assignment)
+        progress = await compute_progress(session, assignment, participants)
+        total = progress.total_problems
+        for user in participants:
+            left = total - progress.solved_count(user.id)
+            if left <= 0 or user.telegram_id is None or user.is_teacher:
+                continue
+            messages.append(
+                (user.telegram_id, deadline_reminder_text(assignment, left, total))
+            )
+
+    sent = await send_each(messages)
+    await session.commit()
+    return sent
 
 
 async def send_due_reminders(session: AsyncSession) -> int:

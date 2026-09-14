@@ -288,6 +288,8 @@ class Assignment(Base):
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     # Засчитывать решения, сделанные ДО выдачи задания. По умолчанию нет.
     count_prior_solves: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Когда напомнили о дедлайне. Пусто — ещё не напоминали.
+    reminded_at: Mapped[datetime | None] = mapped_column()
 
     problem_set: Mapped[ProblemSet] = relationship(lazy="selectin")
     group: Mapped[Group | None] = relationship(lazy="selectin")

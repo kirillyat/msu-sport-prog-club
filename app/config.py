@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     telegram_notify_chat_id: str = ""
     # За сколько минут до старта события напоминать.
     reminder_minutes_before: int = 60
+    # За сколько часов до дедлайна задания напомнить тем, кто не закрыл.
+    assignment_reminder_hours: int = 24
 
     # OpenID Connect (Authentik, Keycloak и любой другой провайдер с discovery).
     oidc_issuer: str = ""            # https://auth.example.org/application/o/sport/
