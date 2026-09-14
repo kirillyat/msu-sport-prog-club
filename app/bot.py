@@ -50,6 +50,21 @@ class TelegramAPI:
             return None
         return data.get("result")
 
+    async def upload(self, method: str, files: dict, **payload) -> dict | None:
+        """Отправка файла: multipart вместо JSON, всё остальное так же."""
+        try:
+            response = await self._client.post(
+                f"{self._base}/{method}", data=payload, files=files, timeout=180
+            )
+            data = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("Telegram %s: %s", method, exc)
+            return None
+        if not data.get("ok"):
+            logger.warning("Telegram %s отказал: %s", method, data.get("description"))
+            return None
+        return data.get("result")
+
     async def send_message(self, chat_id: int, text: str) -> None:
         await self.call("sendMessage", chat_id=chat_id, text=text, parse_mode="HTML")
 

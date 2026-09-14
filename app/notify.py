@@ -33,6 +33,10 @@ from app.templating import fmt_dt
 
 logger = logging.getLogger(__name__)
 
+# Бот вправе отправить документ до 50 МБ — наш предел на загрузку и так меньше.
+TELEGRAM_MAX_DOCUMENT = 50 * 1024 * 1024
+CAPTION_LIMIT = 1024
+
 
 def _chat_for(group: Group | None) -> str | None:
     if group is not None and group.telegram_chat_id:
@@ -88,20 +92,59 @@ async def send(chat_id: str | int, text: str) -> bool:
     return await send_many([chat_id], text) > 0
 
 
+async def _targets(
+    session: AsyncSession | None,
+    group_id: int | None = None,
+    user_id: int | None = None,
+) -> list[str | int]:
+    """Общий чат, если он задан; иначе — личные чаты адресатов."""
+    if user_id is None:
+        chat = _chat_for(await _group_of(session, group_id))
+        if chat:
+            return [chat]
+    if session is None:
+        return []
+    return list(await _personal_chats(session, group_id, user_id))
+
+
 async def _deliver(
     session: AsyncSession | None,
     text: str,
     group_id: int | None = None,
     user_id: int | None = None,
 ) -> int:
-    """Общий чат, если он задан; иначе — каждому лично."""
-    if user_id is None:
-        chat = _chat_for(await _group_of(session, group_id))
-        if chat:
-            return await send_many([chat], text)
-    if session is None:
+    return await send_many(await _targets(session, group_id, user_id), text)
+
+
+async def send_document_many(
+    chat_ids: Iterable[str | int], filename: str, content: bytes, caption: str
+) -> int:
+    """Файл заливается один раз: остальным он уходит по file_id, который вернул
+    Telegram. Иначе рассылка на группу — это N одинаковых загрузок."""
+    ids = list(chat_ids)
+    if not ids or not settings.telegram_bot_token:
         return 0
-    return await send_many(await _personal_chats(session, group_id, user_id), text)
+    if len(content) > TELEGRAM_MAX_DOCUMENT:
+        return 0
+
+    api = TelegramAPI(settings.telegram_bot_token)
+    sent = 0
+    file_id: str | None = None
+    try:
+        for chat_id in ids:
+            common = {"chat_id": chat_id, "caption": caption[:CAPTION_LIMIT], "parse_mode": "HTML"}
+            if file_id is None:
+                result = await api.upload(
+                    "sendDocument", {"document": (filename, content)}, **common
+                )
+                file_id = ((result or {}).get("document") or {}).get("file_id")
+            else:
+                result = await api.call("sendDocument", document=file_id, **common)
+            if result is not None:
+                sent += 1
+    finally:
+        await api.close()
+    return sent
 
 
 def _e(value: object) -> str:
@@ -150,12 +193,36 @@ def material_text(item: Material) -> str:
     if item.description:
         lines.append(_e(item.description))
     base = settings.base_url.rstrip("/")
-    lines.append(f'<a href="{_e(base)}/theory">Скачать на портале</a>')
+    lines.append(f'<a href="{_e(base)}/theory">Открыть на портале</a>')
     return "\n".join(lines)
 
 
 async def notify_material(item: Material, session: AsyncSession | None = None) -> int:
-    return await _deliver(session, material_text(item), group_id=item.group_id)
+    """Файл уходит прямо в чат: ноутбук удобнее получить, а не идти за ним.
+
+    Не дошёл (велик, сеть, отказ) — отправляем хотя бы ссылку на портал.
+    """
+    targets = await _targets(session, group_id=item.group_id)
+    if not targets:
+        return 0
+
+    content = _read_material(item)
+    if content is not None:
+        sent = await send_document_many(targets, item.filename, content, material_text(item))
+        if sent:
+            return sent
+    return await send_many(targets, material_text(item))
+
+
+def _read_material(item: Material) -> bytes | None:
+    from app.services import materials
+
+    path = materials.path_for(item.stored_name)
+    try:
+        return path.read_bytes()
+    except OSError as exc:
+        logger.warning("Материал %s не прочитался: %s", item.id, exc)
+        return None
 
 
 async def notify_announcement(item: Announcement, session: AsyncSession | None = None) -> int:
