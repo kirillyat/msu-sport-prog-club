@@ -54,7 +54,12 @@
       {{ item.filename }} · {{ item.size_label }} · {{ item.published_at | ago }}
     </p>
     <div class="row" style="margin-top:12px; gap:8px">
+      {% if item.can_preview %}
+      <a class="btn small" href="/theory/{{ item.id }}/view">{{ icon("book") }} Смотреть</a>
+      <a class="btn ghost small" href="/theory/{{ item.id }}/download">{{ icon("download") }} Скачать</a>
+      {% else %}
       <a class="btn small" href="/theory/{{ item.id }}/download">{{ icon("download") }} Скачать</a>
+      {% endif %}
       {% if user.is_teacher %}
       <form method="post" action="/theory/{{ item.id }}/delete"
             onsubmit="return confirm('Удалить «{{ item.title }}»?')">

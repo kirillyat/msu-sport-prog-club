@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ item.title }} — {{ settings.app_name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow"><a href="/theory">теория</a> / {{ item.filename }}</p>
+    <h1>{{ item.title }}</h1>
+    {% if item.description %}<p class="sub">{{ item.description }}</p>{% endif %}
+  </div>
+  <a class="btn small" href="/theory/{{ item.id }}/download">{{ icon("download") }} Скачать</a>
+</div>
+
+{% if cells %}
+<div class="notebook">
+  {% for cell in cells %}
+    {% if cell.kind == "markdown" %}
+      <div class="nb-md">{{ cell.html | safe }}</div>
+    {% elif cell.kind == "code" %}
+      <div class="nb-code">
+        <span class="nb-lang">{{ cell.language }}</span>
+        <pre><code>{{ cell.source }}</code></pre>
+        {% for out in cell.outputs %}
+          {% if out.kind == "text" %}<pre class="nb-out">{{ out.text }}</pre>
+          {% elif out.kind == "image" %}<img class="nb-img" src="{{ out.src }}" alt="вывод ячейки">
+          {% else %}<p class="small muted nb-out">{{ out.text }} — смотри в скачанном файле</p>
+          {% endif %}
+        {% endfor %}
+      </div>
+    {% else %}
+      <pre class="nb-raw">{{ cell.source }}</pre>
+    {% endif %}
+  {% endfor %}
+</div>
+<p class="small muted">
+  Показ упрощённый: формулы остаются в исходном виде, интерактивный вывод не
+  рисуется. Полный ноутбук — в скачанном файле.
+</p>
+{% elif rendered %}
+<div class="card nb-md">{{ rendered | safe }}</div>
+{% else %}
+<div class="card"><pre class="nb-raw">{{ text }}</pre></div>
+{% endif %}
+{% endblock %}

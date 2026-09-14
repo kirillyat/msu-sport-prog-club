@@ -11,7 +11,7 @@ from sqlalchemy import select
 from app import notify
 from app.deps import CurrentUser, SessionDep, TeacherUser
 from app.models import Group, Material
-from app.services import materials
+from app.services import materials, notebook
 from app.services.progress import groups_for_user
 from app.templating import templates
 
@@ -124,6 +124,37 @@ async def download_material(session: SessionDep, user: CurrentUser, material_id:
         media_type=item.content_type,
         filename=item.filename,
         content_disposition_type="attachment",
+    )
+
+
+@router.get("/theory/{material_id}/view")
+async def view_material(request: Request, session: SessionDep, user: CurrentUser, material_id: int):
+    item = await session.get(Material, material_id)
+    if item is None or item not in await _visible_to(session, user):
+        return _back(error="Материал не найден")
+    if not notebook.is_previewable(item.filename, item.size):
+        return _back(error="Этот файл можно только скачать")
+
+    path = materials.path_for(item.stored_name)
+    if not path.is_file():
+        return _back(error="Файл потерялся на диске — попроси выложить заново")
+    content = path.read_bytes()
+
+    name = item.filename.lower()
+    cells = notebook.parse(content) if name.endswith(".ipynb") else None
+    text = rendered = None
+    if cells is None:
+        try:
+            text = content.decode("utf-8")
+        except UnicodeDecodeError:
+            return _back(error="Файл не читается как текст — скачай его")
+        if name.endswith(".md"):
+            rendered, text = notebook.render_markdown(text), None
+
+    return templates.TemplateResponse(
+        request,
+        "material.html",
+        {"user": user, "item": item, "cells": cells, "text": text, "rendered": rendered},
     )
 
 

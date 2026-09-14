@@ -383,6 +383,12 @@ class Material(Base):
     group: Mapped[Group | None] = relationship(lazy="selectin")
 
     @property
+    def can_preview(self) -> bool:
+        from app.services.notebook import is_previewable
+
+        return is_previewable(self.filename, self.size)
+
+    @property
     def size_label(self) -> str:
         if self.size < 1024:
             return f"{self.size} Б"
