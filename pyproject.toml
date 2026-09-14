@@ -39,5 +39,9 @@ extend-exclude = ["migrations/versions"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.ruff.lint.flake8-bugbear]
+# В FastAPI вызов в значении по умолчанию — это объявление параметра, а не ловушка.
+extend-immutable-calls = ["fastapi.File"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

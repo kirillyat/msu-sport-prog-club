@@ -15,7 +15,16 @@ from fastapi.staticfiles import StaticFiles
 from app.bot import run_bot
 from app.config import settings
 from app.deps import Forbidden, RedirectToLogin
-from app.routers import accounts, announcements, auth, feed, leaderboard, student, teacher
+from app.routers import (
+    accounts,
+    announcements,
+    auth,
+    feed,
+    leaderboard,
+    materials,
+    student,
+    teacher,
+)
 from app.scheduler import run_scheduler
 from app.templating import STATIC_DIR, templates
 from app.ticker import load_ticker
@@ -85,6 +94,7 @@ app.include_router(student.router)
 app.include_router(accounts.router)
 app.include_router(announcements.router)
 app.include_router(feed.router)
+app.include_router(materials.router)
 app.include_router(leaderboard.router)
 app.include_router(teacher.router)
 

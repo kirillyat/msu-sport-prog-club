@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% from "_ui.html" import empty %}
+{% block title %}Теория — {{ settings.app_name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">материалы</p>
+    <h1>Теория</h1>
+    <p class="sub">Ноутбуки с семинаров, конспекты и разборы.</p>
+  </div>
+</div>
+
+{% if user.is_teacher %}
+<details class="formula" style="margin-bottom:18px" {% if not items %}open{% endif %}>
+  <summary>{{ icon("plus") }} Опубликовать материал</summary>
+  <form method="post" action="/theory" enctype="multipart/form-data" style="margin-top:12px">
+    <div class="grid two">
+      <div class="field">
+        <label for="file">Файл</label>
+        <input type="file" id="file" name="file" required>
+      </div>
+      <div class="field">
+        <label for="title">Название (пусто — имя файла)</label>
+        <input type="text" id="title" name="title" placeholder="Семинар 3. Сортировки">
+      </div>
+      <div class="field">
+        <label for="group_id">Кому</label>
+        <select id="group_id" name="group_id">
+          <option value="">Всему клубу</option>
+          {% for group in groups %}<option value="{{ group.id }}">{{ group.title }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="description">Описание (необязательно)</label>
+        <input type="text" id="description" name="description" placeholder="Разбор задач 1–4">
+      </div>
+    </div>
+    <p class="small muted">До {{ max_mb }} МБ. Форматы: {{ extensions }}.</p>
+    <button type="submit">{{ icon("send") }} Опубликовать</button>
+  </form>
+</details>
+{% endif %}
+
+{% if items %}
+<div class="grid two">
+  {% for item in items %}
+  <div class="card material">
+    <div class="row between" style="align-items:flex-start; gap:10px">
+      <h3 style="margin:0">{{ icon("book") }} {{ item.title }}</h3>
+      <span class="badge">{{ item.group.title if item.group else "весь клуб" }}</span>
+    </div>
+    {% if item.description %}<p class="small" style="margin:8px 0 0">{{ item.description }}</p>{% endif %}
+    <p class="small muted" style="margin:8px 0 0">
+      {{ item.filename }} · {{ item.size_label }} · {{ item.published_at | ago }}
+    </p>
+    <div class="row" style="margin-top:12px; gap:8px">
+      <a class="btn small" href="/theory/{{ item.id }}/download">{{ icon("download") }} Скачать</a>
+      {% if user.is_teacher %}
+      <form method="post" action="/theory/{{ item.id }}/delete"
+            onsubmit="return confirm('Удалить «{{ item.title }}»?')">
+        <button class="danger small" type="submit">{{ icon("trash") }}</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card">
+  {{ empty("book", "Материалов пока нет." if not user.is_teacher
+           else "Материалов пока нет — выложи первый в форме выше.") }}
+</div>
+{% endif %}
+{% endblock %}

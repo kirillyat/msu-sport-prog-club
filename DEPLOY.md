@@ -209,8 +209,15 @@ docker compose cp web:/data/backup.db /var/backups/sport-$(date +%F).db
 0 4 * * * cd /srv/sport && docker compose exec -T web python -m app.cli backup /data/backup.db && docker compose cp web:/data/backup.db /var/backups/sport-$(date +\%F).db
 ```
 
-Восстановление: остановить контейнер, положить файл как `sport.db` в том
-`sport_sport-data`, запустить снова.
+Файлы материалов («Теория») в эту копию не попадают — они лежат не в базе,
+а рядом с ней. Их забирает обычное копирование каталога:
+
+```bash
+docker compose cp web:/data/materials /var/backups/materials-$(date +%F)
+```
+
+Восстановление: остановить контейнер, положить файл как `sport.db` и каталог
+`materials` в том `sport_sport-data`, запустить снова.
 
 ---
 

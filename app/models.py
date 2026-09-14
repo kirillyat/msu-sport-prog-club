@@ -357,6 +357,40 @@ class Submission(Base):
     problem: Mapped[Problem | None] = relationship(lazy="selectin")
 
 
+class Material(Base):
+    """Материал курса: ноутбук с семинара, конспект, презентация.
+
+    Сам файл лежит на диске рядом с базой — в SQLite его класть незачем.
+    В таблице только то, по чему ищут и показывают.
+    """
+
+    __tablename__ = "materials"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text)
+    # Пусто — материал для всего клуба.
+    group_id: Mapped[int | None] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"))
+    # Имя на диске — случайное: пользовательское в путь не попадает никогда.
+    stored_name: Mapped[str] = mapped_column(String(80), unique=True)
+    # Имя, под которым файл скачается.
+    filename: Mapped[str] = mapped_column(String(200))
+    content_type: Mapped[str] = mapped_column(String(120))
+    size: Mapped[int] = mapped_column(Integer)
+    published_at: Mapped[datetime] = mapped_column(default=utcnow)
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+    group: Mapped[Group | None] = relationship(lazy="selectin")
+
+    @property
+    def size_label(self) -> str:
+        if self.size < 1024:
+            return f"{self.size} Б"
+        if self.size < 1024 * 1024:
+            return f"{self.size / 1024:.0f} КБ"
+        return f"{self.size / 1024 / 1024:.1f} МБ"
+
+
 class BonusPoint(Base):
     """Ручная корректировка баллов преподавателем."""
 

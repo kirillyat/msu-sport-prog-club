@@ -20,7 +20,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot import TelegramAPI
 from app.config import settings
-from app.models import Announcement, Assignment, Group, GroupMembership, User, utcnow
+from app.models import (
+    Announcement,
+    Assignment,
+    Group,
+    GroupMembership,
+    Material,
+    User,
+    utcnow,
+)
 from app.templating import fmt_dt
 
 logger = logging.getLogger(__name__)
@@ -135,6 +143,19 @@ def assignment_text(item: Assignment, problems: int) -> str:
     base = settings.base_url.rstrip("/")
     lines.append(f'<a href="{_e(base)}/assignments/{item.id}">Открыть на портале</a>')
     return "\n".join(lines)
+
+
+def material_text(item: Material) -> str:
+    lines = [f"📘 Материал: <b>{_e(item.title)}</b>"]
+    if item.description:
+        lines.append(_e(item.description))
+    base = settings.base_url.rstrip("/")
+    lines.append(f'<a href="{_e(base)}/theory">Скачать на портале</a>')
+    return "\n".join(lines)
+
+
+async def notify_material(item: Material, session: AsyncSession | None = None) -> int:
+    return await _deliver(session, material_text(item), group_id=item.group_id)
 
 
 async def notify_announcement(item: Announcement, session: AsyncSession | None = None) -> int:
