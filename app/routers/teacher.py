@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import secrets
 import string
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import notify
-from app.deps import SessionDep, TeacherUser
+from app.deps import OptionalInt, SessionDep, TeacherUser
 from app.models import (
     Announcement,
     Assignment,
@@ -25,8 +25,11 @@ from app.models import (
     User,
     utcnow,
 )
+from app.routers.leaderboard import PERIODS
+from app.services import export
 from app.services.catalog import get_state, problem_count, sync_catalog
 from app.services.feed import build_feed
+from app.services.leaderboard import build_leaderboard
 from app.services.problem_parser import parse_problem_list, search_problems
 from app.services.progress import compute_progress, participants_for_assignment
 from app.services.sync import relink_orphan_submissions, sync_all
@@ -471,6 +474,37 @@ async def assignment_matrix(
         request,
         "teacher/assignment.html",
         {"user": user, "assignment": assignment, "progress": progress, **_flash(request)},
+    )
+
+
+@router.get("/assignments/{assignment_id}/export.csv")
+async def export_assignment(session: SessionDep, user: TeacherUser, assignment_id: int):
+    assignment = await session.get(Assignment, assignment_id)
+    if assignment is None:
+        return _redirect("/teacher/assignments", error="Задание+не+найдено")
+
+    participants = await participants_for_assignment(session, assignment)
+    progress = await compute_progress(session, assignment, participants)
+    name = export.filename(f"assignment-{assignment.id}", utcnow())
+    return Response(
+        export.assignment_csv(assignment, progress),
+        media_type="text/csv; charset=utf-8",
+        headers=export.response_headers(name),
+    )
+
+
+@router.get("/export/leaderboard.csv")
+async def export_leaderboard(
+    session: SessionDep, user: TeacherUser, group_id: OptionalInt = None, period: str = "all"
+):
+    days = PERIODS.get(period, PERIODS["all"])[1]
+    since = utcnow() - timedelta(days=days) if days else None
+    rows = await build_leaderboard(session, group_id=group_id, since=since)
+    name = export.filename("leaderboard", utcnow())
+    return Response(
+        await export.leaderboard_csv(session, rows),
+        media_type="text/csv; charset=utf-8",
+        headers=export.response_headers(name),
     )
 
 

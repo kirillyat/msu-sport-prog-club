@@ -12,6 +12,12 @@
       При равном счёте выше тот, кто закончил раньше.
     </p>
   </div>
+  {% if user.is_teacher %}
+  <a class="btn ghost small" style="align-self:flex-end"
+     href="/teacher/export/leaderboard.csv?group_id={{ group_id or "" }}&period={{ period }}">
+    {{ icon("download") }} CSV
+  </a>
+  {% endif %}
   <form method="get" action="/leaderboard" class="inline-form">
     <div class="field">
       <label for="group_id">Группа</label>
