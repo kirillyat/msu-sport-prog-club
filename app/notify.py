@@ -11,9 +11,12 @@
 from __future__ import annotations
 
 import html
+import json
 import logging
 from collections.abc import Iterable
 from datetime import timedelta
+from functools import partial
+from urllib.parse import urlparse
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +40,51 @@ logger = logging.getLogger(__name__)
 # Бот вправе отправить документ до 50 МБ — наш предел на загрузку и так меньше.
 TELEGRAM_MAX_DOCUMENT = 50 * 1024 * 1024
 CAPTION_LIMIT = 1024
+
+# Кнопку с такой ссылкой Telegram не примет, да и открыть её с телефона нельзя.
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1", ""}
+
+
+def button_markup(label: str, url: str) -> str | None:
+    """Кнопка под сообщением. None — ссылка нерабочая, обойдёмся текстом."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or parsed.hostname in LOCAL_HOSTS:
+        return None
+    return json.dumps(
+        {"inline_keyboard": [[{"text": label, "url": url}]]}, ensure_ascii=False
+    )
+
+
+def with_link(text: str, label: str, url: str) -> str:
+    """Запасной вариант, когда кнопки не будет: ссылка прямо в тексте."""
+    return f'{text}\n<a href="{_e(url)}">{_e(label)}</a>'
+
+
+async def _attempt(
+    send, button: tuple[str, str] | None, field: str, text: str,
+    limit: int | None = None, **payload,
+) -> dict | None:
+    """Одна отправка с кнопкой под сообщением.
+
+    Кнопку Telegram может не принять — например, адрес портала ещё локальный.
+    Тогда повторяем без неё, положив ссылку прямо в текст: лучше ссылка,
+    чем сообщение, из которого некуда нажать.
+    """
+    def fit(value: str) -> str:
+        return value[:limit] if limit else value
+
+    markup = button_markup(*button) if button else None
+    body = {**payload, "parse_mode": "HTML"}
+    body[field] = fit(text if markup or not button else with_link(text, *button))
+    if markup:
+        body["reply_markup"] = markup
+
+    result = await send(**body)
+    if result is None and markup:
+        body.pop("reply_markup")
+        body[field] = fit(with_link(text, *button))
+        result = await send(**body)
+    return result
 
 
 def _chat_for(group: Group | None) -> str | None:
@@ -69,31 +117,20 @@ async def _personal_chats(
     return list((await session.execute(stmt)).scalars().all())
 
 
-async def send_many(chat_ids: Iterable[str | int], text: str) -> int:
+async def send_many(
+    chat_ids: Iterable[str | int], text: str, button: tuple[str, str] | None = None
+) -> int:
     """Одна рассылка — один HTTP-клиент. Недоступный адресат не отменяет остальных."""
-    ids = list(chat_ids)
-    if not ids or not settings.telegram_bot_token:
-        return 0
-    api = TelegramAPI(settings.telegram_bot_token)
-    sent = 0
-    try:
-        for chat_id in ids:
-            result = await api.call(
-                "sendMessage", chat_id=chat_id, text=text, parse_mode="HTML",
-                disable_web_page_preview=True,
-            )
-            if result is not None:
-                sent += 1
-    finally:
-        await api.close()
-    return sent
+    return await send_each([(chat_id, text) for chat_id in chat_ids], button)
 
 
 async def send(chat_id: str | int, text: str) -> bool:
     return await send_many([chat_id], text) > 0
 
 
-async def send_each(messages: Iterable[tuple[str | int, str]]) -> int:
+async def send_each(
+    messages: Iterable[tuple[str | int, str]], button: tuple[str, str] | None = None
+) -> int:
     """Каждому свой текст — одним клиентом. Так рассылаются напоминания:
     в них у каждого свои цифры, общим сообщением не обойтись."""
     items = list(messages)
@@ -103,9 +140,9 @@ async def send_each(messages: Iterable[tuple[str | int, str]]) -> int:
     sent = 0
     try:
         for chat_id, text in items:
-            result = await api.call(
-                "sendMessage", chat_id=chat_id, text=text, parse_mode="HTML",
-                disable_web_page_preview=True,
+            result = await _attempt(
+                partial(api.call, "sendMessage"), button, "text", text,
+                chat_id=chat_id, disable_web_page_preview=True,
             )
             if result is not None:
                 sent += 1
@@ -134,12 +171,14 @@ async def _deliver(
     text: str,
     group_id: int | None = None,
     user_id: int | None = None,
+    button: tuple[str, str] | None = None,
 ) -> int:
-    return await send_many(await _targets(session, group_id, user_id), text)
+    return await send_many(await _targets(session, group_id, user_id), text, button)
 
 
 async def send_document_many(
-    chat_ids: Iterable[str | int], filename: str, content: bytes, caption: str
+    chat_ids: Iterable[str | int], filename: str, content: bytes, caption: str,
+    button: tuple[str, str] | None = None,
 ) -> int:
     """Файл заливается один раз: остальным он уходит по file_id, который вернул
     Telegram. Иначе рассылка на группу — это N одинаковых загрузок."""
@@ -154,14 +193,16 @@ async def send_document_many(
     file_id: str | None = None
     try:
         for chat_id in ids:
-            common = {"chat_id": chat_id, "caption": caption[:CAPTION_LIMIT], "parse_mode": "HTML"}
             if file_id is None:
-                result = await api.upload(
-                    "sendDocument", {"document": (filename, content)}, **common
-                )
-                file_id = ((result or {}).get("document") or {}).get("file_id")
+                # Первому файл уходит целиком, остальным — по file_id.
+                send = partial(api.upload, "sendDocument", {"document": (filename, content)})
             else:
-                result = await api.call("sendDocument", document=file_id, **common)
+                send = partial(api.call, "sendDocument", document=file_id)
+            result = await _attempt(
+                send, button, "caption", caption, limit=CAPTION_LIMIT, chat_id=chat_id,
+            )
+            if file_id is None:
+                file_id = ((result or {}).get("document") or {}).get("file_id")
             if result is not None:
                 sent += 1
     finally:
@@ -171,6 +212,25 @@ async def send_document_many(
 
 def _e(value: object) -> str:
     return html.escape(str(value or ""))
+
+
+def portal_url(path: str) -> str:
+    return settings.base_url.rstrip("/") + path
+
+
+def announcement_button(item: Announcement) -> tuple[str, str]:
+    """У анонса своя ссылка (на контест), иначе ведём на портал."""
+    if item.url:
+        return (item.url_label or "Перейти", item.url)
+    return ("Открыть на портале", portal_url("/announcements"))
+
+
+def assignment_button(item: Assignment) -> tuple[str, str]:
+    return ("Открыть задание", portal_url(f"/assignments/{item.id}"))
+
+
+def material_button(item: Material) -> tuple[str, str]:
+    return ("Открыть на портале", portal_url(f"/theory/{item.id}/view"))
 
 
 def announcement_text(item: Announcement) -> str:
@@ -183,9 +243,6 @@ def announcement_text(item: Announcement) -> str:
     if item.body:
         lines.append("")
         lines.append(_e(item.body))
-    if item.url:
-        lines.append("")
-        lines.append(f'<a href="{_e(item.url)}">{_e(item.url_label or "Перейти")}</a>')
     return "\n".join(lines)
 
 
@@ -195,8 +252,6 @@ def reminder_text(item: Announcement) -> str:
         f"⏰ Через {minutes} мин: <b>{_e(item.title)}</b>",
         f"🕐 старт {fmt_dt(item.starts_at, '%H:%M')}",
     ]
-    if item.url:
-        lines.append(f'<a href="{_e(item.url)}">{_e(item.url_label or "Перейти")}</a>')
     return "\n".join(lines)
 
 
@@ -205,8 +260,6 @@ def assignment_text(item: Assignment, problems: int) -> str:
     if item.deadline:
         suffix = " (после срока не засчитывается)" if item.hard_deadline else ""
         lines.append(f"Дедлайн: {fmt_dt(item.deadline)}{suffix}")
-    base = settings.base_url.rstrip("/")
-    lines.append(f'<a href="{_e(base)}/assignments/{item.id}">Открыть на портале</a>')
     return "\n".join(lines)
 
 
@@ -214,8 +267,6 @@ def material_text(item: Material) -> str:
     lines = [f"📘 Материал: <b>{_e(item.title)}</b>"]
     if item.description:
         lines.append(_e(item.description))
-    base = settings.base_url.rstrip("/")
-    lines.append(f'<a href="{_e(base)}/theory">Открыть на портале</a>')
     return "\n".join(lines)
 
 
@@ -230,10 +281,12 @@ async def notify_material(item: Material, session: AsyncSession | None = None) -
 
     content = _read_material(item)
     if content is not None:
-        sent = await send_document_many(targets, item.filename, content, material_text(item))
+        sent = await send_document_many(
+            targets, item.filename, content, material_text(item), material_button(item)
+        )
         if sent:
             return sent
-    return await send_many(targets, material_text(item))
+    return await send_many(targets, material_text(item), material_button(item))
 
 
 def _read_material(item: Material) -> bytes | None:
@@ -248,7 +301,10 @@ def _read_material(item: Material) -> bytes | None:
 
 
 async def notify_announcement(item: Announcement, session: AsyncSession | None = None) -> int:
-    return await _deliver(session, announcement_text(item), group_id=item.group_id)
+    return await _deliver(
+        session, announcement_text(item), group_id=item.group_id,
+        button=announcement_button(item),
+    )
 
 
 async def notify_assignment(
@@ -256,7 +312,7 @@ async def notify_assignment(
 ) -> int:
     return await _deliver(
         session, assignment_text(item, problems),
-        group_id=item.group_id, user_id=item.user_id,
+        group_id=item.group_id, user_id=item.user_id, button=assignment_button(item),
     )
 
 
@@ -270,8 +326,6 @@ def deadline_reminder_text(item: Assignment, left: int, total: int) -> str:
     ]
     if item.hard_deadline:
         lines.append("После срока решения не засчитываются.")
-    base = settings.base_url.rstrip("/")
-    lines.append(f'<a href="{_e(base)}/assignments/{item.id}">Открыть задание</a>')
     return "\n".join(lines)
 
 
@@ -289,7 +343,8 @@ async def send_deadline_reminders(session: AsyncSession) -> int:
         Assignment.deadline <= horizon,
         Assignment.reminded_at.is_(None),
     )
-    messages: list[tuple[str | int, str]] = []
+    # Кнопка ведёт на своё задание, поэтому рассылка идёт по заданиям.
+    grouped: dict[Assignment, list[tuple[str | int, str]]] = {}
     for assignment in (await session.execute(stmt)).scalars().all():
         # Отмечаем в любом случае: иначе каждый круг будем перебирать одно и то же.
         assignment.reminded_at = now
@@ -300,11 +355,13 @@ async def send_deadline_reminders(session: AsyncSession) -> int:
             left = total - progress.solved_count(user.id)
             if left <= 0 or user.telegram_id is None or user.is_teacher:
                 continue
-            messages.append(
+            grouped.setdefault(assignment, []).append(
                 (user.telegram_id, deadline_reminder_text(assignment, left, total))
             )
 
-    sent = await send_each(messages)
+    sent = 0
+    for assignment, batch in grouped.items():
+        sent += await send_each(batch, assignment_button(assignment))
     await session.commit()
     return sent
 
@@ -323,7 +380,10 @@ async def send_due_reminders(session: AsyncSession) -> int:
     for item in (await session.execute(stmt)).scalars().all():
         # Отмечаем в любом случае: иначе каждый круг будем перебирать одно и то же.
         item.reminded_at = now
-        if await _deliver(session, reminder_text(item), group_id=item.group_id):
+        if await _deliver(
+            session, reminder_text(item), group_id=item.group_id,
+            button=announcement_button(item),
+        ):
             sent += 1
     await session.commit()
     return sent

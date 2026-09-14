@@ -14,7 +14,7 @@ from app.models import Announcement, Assignment, Group, GroupMembership, Problem
 def outbox(monkeypatch):
     sent: list[tuple[str, str]] = []
 
-    async def fake_send_many(chat_ids, text):
+    async def fake_send_many(chat_ids, text, button=None):
         ids = [str(c) for c in chat_ids]
         sent.extend((c, text) for c in ids)
         return len(ids)
@@ -24,7 +24,7 @@ def outbox(monkeypatch):
     return sent
 
 
-def test_announcement_text_has_title_time_and_link():
+def test_announcement_text_has_title_time_and_button():
     item = Announcement(
         title="Раунд <999>", body="Сбор в 17:45",
         url="https://cf.example/1", url_label="Регистрация",
@@ -34,7 +34,8 @@ def test_announcement_text_has_title_time_and_link():
     text = notify.announcement_text(item)
     assert "<b>Раунд &lt;999&gt;</b>" in text  # HTML экранирован
     assert "15.09.2026 19:51 — 21:51" in text  # московское время
-    assert 'href="https://cf.example/1">Регистрация</a>' in text
+    # Ссылка теперь не в тексте, а кнопкой под сообщением.
+    assert notify.announcement_button(item) == ("Регистрация", "https://cf.example/1")
 
 
 async def test_announcement_goes_to_group_chat_when_set(session, outbox):
@@ -159,9 +160,10 @@ async def test_assignment_text_and_route(session, client, outbox):
     })
     assert len(outbox) == 1
     text = outbox[0][1]
-    assert "Неделя 1" in text and "Дедлайн: 01.10.2026 18:00" in text and "/assignments/" in text
+    assert "Неделя 1" in text and "Дедлайн: 01.10.2026 18:00" in text
+    # Ссылка на задание ушла в кнопку под сообщением.
     assignment = await session.scalar(select(Assignment))
-    assert assignment is not None
+    assert notify.assignment_button(assignment)[1].endswith(f"/assignments/{assignment.id}")
 
 
 async def test_group_chat_id_validation(session, client):

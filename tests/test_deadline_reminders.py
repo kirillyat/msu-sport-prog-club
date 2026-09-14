@@ -29,7 +29,7 @@ def outbox(monkeypatch):
     """Напоминание у каждого своё, поэтому перехватываем поимённую рассылку."""
     sent: list[tuple[str, str]] = []
 
-    async def fake_send_each(messages):
+    async def fake_send_each(messages, button=None):
         items = [(str(chat), text) for chat, text in messages]
         sent.extend(items)
         return len(items)
@@ -103,7 +103,7 @@ async def test_reminder_goes_only_to_those_who_have_not_finished(session, world,
     chat, text = outbox[0]
     assert chat == "22"                                   # только Боря
     assert "Осталось задач: 2 из 2" in text
-    assert "Неделя 3" in text and "/assignments/" in text
+    assert "Неделя 3" in text
 
 
 async def test_reminder_counts_what_is_left_for_each(session, world, outbox):

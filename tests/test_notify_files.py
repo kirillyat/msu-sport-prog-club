@@ -23,12 +23,12 @@ def outbox(monkeypatch):
     """Записываем и документы, и обычные сообщения — чтобы видеть, что ушло."""
     sent: dict[str, list] = {"documents": [], "messages": []}
 
-    async def fake_documents(chat_ids, filename, content, caption):
+    async def fake_documents(chat_ids, filename, content, caption, button=None):
         ids = [str(c) for c in chat_ids]
         sent["documents"].append((ids, filename, content, caption))
         return len(ids)
 
-    async def fake_messages(chat_ids, text):
+    async def fake_messages(chat_ids, text, button=None):
         ids = [str(c) for c in chat_ids]
         sent["messages"].append((ids, text))
         return len(ids)
